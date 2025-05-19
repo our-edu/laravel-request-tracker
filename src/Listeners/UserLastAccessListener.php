@@ -5,6 +5,7 @@ namespace Ouredu\UserLastAccess\Listeners;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Ouredu\UserLastAccess\Models\UserLastAccess;
+use Illuminate\Support\Facades\Auth;
 
 class UserLastAccessListener
 {
