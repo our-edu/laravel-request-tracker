@@ -4,7 +4,6 @@ namespace Ouredu\UserLastAccess;
 
 use Illuminate\Support\ServiceProvider;
 use Ouredu\UserLastAccess\Listeners\UserLastAccessListener;
-use Illuminate\Routing\Events\RouteMatched;
 
 class LastAccessServiceProvider extends ServiceProvider
 {
@@ -17,9 +16,8 @@ class LastAccessServiceProvider extends ServiceProvider
 
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
-        $this->app['events']->listen(RouteMatched::class, function (RouteMatched $event) {
-            $listener = new UserLastAccessListener();
-            $listener->handle();
+        $this->app->terminating(function () {
+            (new UserLastAccessListener())->handle();
         });
     }
 

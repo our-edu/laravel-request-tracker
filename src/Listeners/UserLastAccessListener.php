@@ -1,22 +1,20 @@
 <?php
+
 namespace Ouredu\UserLastAccess\Listeners;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Ouredu\UserLastAccess\Models\UserLastAccess;
 
-
 class UserLastAccessListener
 {
-    public function handle(): void
+    public function handle($event = null): void
     {
-
         try {
-            $user = auth()->user();
+            $user = Auth::user(); // or use
 
-            // Check if the user is authenticated
             if (!$user) {
-                Log::warning('No authenticated user found.');
+                Log::warning('UserLastAccessListener: No authenticated user found.');
                 return;
             }
 
@@ -24,9 +22,7 @@ class UserLastAccessListener
                 ['user_uuid' => $user->uuid],
                 ['last_login_at' => Carbon::now(), 'updated_at' => Carbon::now()]
             );
-
         } catch (\Exception $exception) {
-            // Log error to the default log channel
             Log::error('Cannot update user last access log', [
                 'message' => $exception->getMessage(),
                 'file' => $exception->getFile(),
@@ -34,6 +30,5 @@ class UserLastAccessListener
                 'trace' => $exception->getTraceAsString(),
             ]);
         }
-
     }
 }
