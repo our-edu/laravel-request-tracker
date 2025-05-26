@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Log;
 use Ouredu\UserLastAccess\Models\UserLastAccess;
 use Illuminate\Support\Facades\Auth;
 
+
 class UserLastAccessListener
 {
     public function handle($event = null): void
