@@ -1,0 +1,27 @@
+<?php
+
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+class CreateRequestTrackersTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('request_trackers', function (Blueprint $table) {
+            $table->uuid('uuid')->primary();
+            $table->uuid('user_uuid')->index();
+            $table->string('method')->nullable();
+            $table->string('auth_guards')->nullable();
+            $table->uuid('role_uuid')->nullable();
+            $table->string('application')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    public function down()
+    {
+        Schema::dropIfExists('request_trackers');
+    }
+}

@@ -1,34 +1,22 @@
 {
-    "name": "our-edu/user-last-access",
-    "description": "A Laravel package to store the latest user access timestamp without using middleware or login events.",
-    "type": "library",
-    "license": "MIT",
-    "authors": [
-        {
-            "name": "yasmin mostafa"
-        }
-    ],
-    "require": {
-        "php": "^7.4|^8.0",
-        "illuminate/support": "^8.0|^9.0|^10.0"
-    },
-    "autoload": {
-        "psr-4": {
-            "Ouredu\\UserLastAccess\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Ouredu\\UserLastAccess\\Tests\\": "tests/"
-        }
-    },
-    "extra": {
-        "laravel": {
-            "providers": [
-                "Ouredu\\UserLastAccess\\LastAccessServiceProvider"
-            ]
-        }
-    },
-    "minimum-stability": "dev",
-    "prefer-stable": true
+  "name": "our-edu/laravel-request-tracker",
+  "description": "Track incoming requests lifecycle and store request traces in DB (auto installable).",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "OurEdu\\RequestTracker\\": "src/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "OurEdu\\RequestTracker\\RequestTrackerServiceProvider"
+      ]
+    }
+  },
+  "require": {
+    "php": ">=8.0",
+    "illuminate/support": "^9|^10|^11"
+  }
 }
