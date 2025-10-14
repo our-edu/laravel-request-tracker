@@ -126,9 +126,6 @@ class EventsSubscriber
         // Attach tracker uuid + a flag whether we need to set cookie (for guest)
         if ($tracker) {
             $request->attributes->set('request_tracker_uuid', $tracker->uuid);
-            if ($shouldSetGuestCookie) {
-                $request->attributes->set('request_tracker_set_cookie', true);
-            }
         }
     }
 
