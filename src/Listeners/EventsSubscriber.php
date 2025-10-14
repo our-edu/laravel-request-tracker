@@ -128,7 +128,7 @@ class EventsSubscriber
 
         if (class_exists(\Laravel\Octane\Events\RequestHandled::class)) {
             $events->listen(
-                \Laravel\Octane\Events\RequestReceived::class,
+                \Laravel\Octane\Events\RequestHandled::class,
                 [self::class, 'handleRouteMatched'] // event contains ->request
             );
             $events->listen(
