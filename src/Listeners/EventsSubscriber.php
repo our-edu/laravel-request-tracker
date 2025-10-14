@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
 use OurEdu\RequestTracker\Models\RequestTracker;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class EventsSubscriber
 {
@@ -25,13 +26,12 @@ class EventsSubscriber
             return;
         }
 
-        $path   = $request->path();
+        // Normalize and lower-case path (no leading/trailing slash)
+        $path   = trim($request->path(), '/');
+        $path   = strtolower($path);
         $method = $request->method();
-        $app    = env('APP_NAME');
-
-        // normalize current path (no leading/trailing slash, lowercase for safe matching)
-        $path = trim($request->path(), '/');           // e.g. "admission/api/v1/ar/parent/look-up"
-        $path = strtolower($path);                     // make matching case-insensitive
+        // Use config helper (safe for Octane / long-lived processes)
+        $app    = config('app.name');
 
         // check exclude patterns
         $excludes = $config['exclude'] ?? [];
@@ -39,28 +39,22 @@ class EventsSubscriber
             $pattern = trim($pattern, '/');
             $pattern = strtolower($pattern);
 
-            // 1) regex pattern: prefix with "regex:"
-            if (Str::startsWith($pattern, 'regex:')) {
+            if (\Illuminate\Support\Str::startsWith($pattern, 'regex:')) {
                 $regex = substr($pattern, 6);
                 if (@preg_match($regex, $path)) {
-                    // matched -> skip tracking
                     return;
                 }
                 continue;
             }
 
-            // 2) wildcard pattern: contains '*'
             if (strpos($pattern, '*') !== false) {
-                // fnmatch expects pattern in shell wildcard format
-                // ensure we match the whole path
-                if (fnmatch($pattern, $path)) {
+                if (@fnmatch($pattern, $path)) {
                     return;
                 }
                 continue;
             }
 
-            // 3) default: treat as suffix (what you want for v1/ar/parent/look-up)
-            if (Str::endsWith($path, $pattern)) {
+            if (\Illuminate\Support\Str::endsWith($path, $pattern)) {
                 return;
             }
         }
@@ -69,7 +63,7 @@ class EventsSubscriber
         $user = null;
         try {
             $user = $request->user();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $user = null;
         }
 
@@ -79,44 +73,50 @@ class EventsSubscriber
         if ($user) {
             $userId = $user->getAuthIdentifier();
 
-            // Find existing tracker for this user + path OR create one
-            // Make sure there's an index/unique constraint for performance (see migration notes)
-            $tracker = RequestTracker::firstOrCreate(
-                ['user_uuid' => $userId, 'path' => $path],
-                [
-                    'uuid'        => (string) Str::uuid(),
-                    'method'      => $method,
-                    'application' => $app,
-                    'auth_guards' => implode(',', $config['auth_guards'] ?? []),
-                    'last_access' => now(),
-                ]
-            );
+            // Use safe DB wrapper to handle stale connections on Octane.
+            $tracker = $this->safeDb(function () use ($userId, $path, $method, $app, $config) {
+                // Use updateOrCreate to ensure we update last_access when a record already exists
+                return RequestTracker::updateOrCreate(
+                    ['user_uuid' => $userId, 'path' => $path],
+                    [
+                        'uuid'             => (string) Str::uuid(),
+                        'method'           => $method,
+                        'application'      => $app,
+                        'auth_guards'      => implode(',', $config['auth_guards'] ?? []),
+                        'last_access'      => now(),
+                    ]
+                );
+            });
         } else {
             // Guest flow: try cookie with tracker uuid
             $cookieUuid = $request->cookie('request_tracker_uuid');
 
             if ($cookieUuid) {
-                $tracker = RequestTracker::where('uuid', $cookieUuid)->first();
+                $tracker = $this->safeDb(function () use ($cookieUuid) {
+                    return RequestTracker::where('uuid', $cookieUuid)->first();
+                });
 
-                // If tracker exists but path differs, create a new tracker for this path
+                // If tracker exists but path differs, force new create
                 if ($tracker && $tracker->path !== $path) {
-                    $tracker = null; // force create new below
+                    $tracker = null;
                 }
             }
 
-            if (!$tracker) {
-                // Create a new tracker for this guest+path
-                $tracker = RequestTracker::create([
-                    'uuid'        => (string) Str::uuid(),
-                    'method'      => $method,
-                    'application' => $app,
-                    'auth_guards' => implode(',', $config['auth_guards'] ?? []),
-                    'path'        => $path,
-                    'last_access' => now(),
-                    // user_uuid stays null for guests
-                ]);
+            if (! $tracker) {
+                // Create a new tracker for this guest+path (transaction to reduce race issues)
+                $tracker = $this->safeDb(function () use ($path, $method, $app, $config) {
+                    return DB::transaction(function () use ($path, $method, $app, $config) {
+                        return RequestTracker::create([
+                            'uuid'        => (string) Str::uuid(),
+                            'method'      => $method,
+                            'application' => $app,
+                            'auth_guards' => implode(',', $config['auth_guards'] ?? []),
+                            'path'        => $path,
+                            'last_access' => now(),
+                        ]);
+                    });
+                });
 
-                // mark that we must set cookie on response
                 $shouldSetGuestCookie = true;
             }
         }
@@ -139,12 +139,15 @@ class EventsSubscriber
         $response = $event->response;
 
         $uuid = $request->attributes->get('request_tracker_uuid');
-        if (!$uuid) {
+        if (! $uuid) {
             return;
         }
 
-        $tracker = RequestTracker::where('uuid', $uuid)->first();
-        if (!$tracker) {
+        $tracker = $this->safeDb(function () use ($uuid) {
+            return RequestTracker::where('uuid', $uuid)->first();
+        });
+
+        if (! $tracker) {
             return;
         }
 
@@ -154,7 +157,6 @@ class EventsSubscriber
             if ($user = $request->user()) {
                 $userId = $user->getAuthIdentifier();
             } else {
-                // look through configured auth guards just in case
                 foreach (config('request-tracker.auth_guards', []) as $guard) {
                     if ($u = Auth::guard($guard)->user()) {
                         $userId = $u->getAuthIdentifier();
@@ -162,37 +164,70 @@ class EventsSubscriber
                     }
                 }
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $userId = null;
         }
-        $token = $request->bearerToken();
-        if ($token) {
-            $userSession = DB::table('user_sessions')->where([
-                'user_uuid' => $userId,
-                'token'     => $token
-            ])->first();
 
+        $token = $request->bearerToken();
+        $userSession = null;
+        if ($token) {
+            $userSession = $this->safeDb(function () use ($userId, $token) {
+                return DB::table('user_sessions')->where([
+                    'user_uuid' => $userId,
+                    'token'     => $token
+                ])->first();
+            });
         }
 
-        // Update last_access and other fields
-        $tracker->update([
-            'user_uuid'   => $userId,
-            'last_access' => now(),
-            'path'        => $request->path(),
-            'method'      => $request->method(),
-            'application' => env('APP_NAME'),
-            'user_session_uuid' => $userSession ? $userSession->uuid : null,
-            'role_uuid'  => $userSession ? $userSession->role_id : null,
-        ]);
+        // Refresh tracker model to avoid stale data in long-lived worker
+        try {
+            $tracker->refresh();
+        } catch (Throwable $_) {
+            // ignore refresh errors and continue with best-effort update
+        }
+
+        // Update last_access and other fields (safe write)
+        $this->safeDb(function () use ($tracker, $userId, $request, $userSession) {
+            $tracker->update([
+                'user_uuid'          => $userId,
+                'last_access'        => now(),
+                'path'               => trim($request->path(), '/'),
+                'method'             => $request->method(),
+                'application'        => config('app.name'),
+                'user_session_uuid'  => $userSession ? $userSession->uuid : null,
+                'role_uuid'          => $userSession ? $userSession->role_id : null,
+            ]);
+        });
 
         // If we flagged that a guest cookie is required, attach it to response
         if ($request->attributes->get('request_tracker_set_cookie')) {
-            // set a long-lived, httpOnly cookie that is available to future requests
-            // adjust domain/path/secure flags to your needs
             $cookie = cookie()->forever('request_tracker_uuid', $tracker->uuid);
             if ($response) {
                 $response->headers->setCookie($cookie);
             }
+        }
+    }
+
+    /**
+     * Safe DB wrapper for Octane: try once, on failure reconnect and retry a single time.
+     * Keep this small and idempotent (avoid side-effects on retry).
+     *
+     * IMPORTANT: The callable should be idempotent or safe to run twice (selects, updateOrCreate, etc.).
+     */
+    protected function safeDb(callable $work)
+    {
+        try {
+            return $work();
+        } catch (Throwable $e) {
+            // Typical Octane scenario: DB connection timed out. Try reconnect once.
+            try {
+                DB::reconnect();
+            } catch (Throwable $_) {
+                // ignore
+            }
+
+            // Try again once
+            return $work();
         }
     }
 
