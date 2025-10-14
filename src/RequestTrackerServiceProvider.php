@@ -2,6 +2,7 @@
 
 namespace OurEdu\RequestTracker;
 
+use Couchbase\RequestTracer;
 use Illuminate\Support\ServiceProvider;
 use OurEdu\RequestTracker\Listeners\EventsSubscriber;
 use Illuminate\Support\Facades\Event;
@@ -27,6 +28,7 @@ class RequestTrackerServiceProvider extends ServiceProvider
         ], 'migrations');
 
         // register the event subscriber
+
         Event::subscribe(EventsSubscriber::class);
 
     }
