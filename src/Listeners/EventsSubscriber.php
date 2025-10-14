@@ -128,6 +128,14 @@ class EventsSubscriber
         } catch (\Throwable $e) {
             $userId = null;
         }
+        $token = $request->bearerToken();
+        if ($token) {
+            $userSession = DB::table('user_sessions')->where([
+                'user_uuid' => $userId,
+                'token'     => $token
+            ])->first();
+
+        }
 
         // Update last_access and other fields
         $tracker->update([
@@ -136,7 +144,8 @@ class EventsSubscriber
             'path'        => $request->path(),
             'method'      => $request->method(),
             'application' => env('APP_NAME'),
-            'status_code' => $response ? $response->getStatusCode() : null,
+            'user_session_uuid' => $userSession ? $userSession->uuid : null,
+            'role_uuid'  => $userSession ? $userSession->role_uuid : null,
         ]);
 
         // If we flagged that a guest cookie is required, attach it to response
