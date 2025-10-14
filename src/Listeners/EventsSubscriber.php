@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cookie;
 use OurEdu\RequestTracker\Models\RequestTracker;
+use Illuminate\Support\Facades\DB;
 
 class EventsSubscriber
 {
