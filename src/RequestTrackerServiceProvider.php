@@ -11,14 +11,14 @@ class RequestTrackerServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/request-tracker.php', 'request-tracker');
+        $this->mergeConfigFrom(__DIR__.'/config/request-tracker.php', 'request-tracker');
     }
 
     public function boot(Router $router)
     {
         // publish config & migration
         $this->publishes([
-            __DIR__.'/../config/request-tracker.php' => config_path('request-tracker.php'),
+            __DIR__.'/config/request-tracker.php' => config_path('request-tracker.php'),
         ], 'config');
 
         $this->publishes([
