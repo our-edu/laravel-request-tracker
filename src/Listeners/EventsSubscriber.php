@@ -2,28 +2,34 @@
 
 namespace OurEdu\RequestTracker\Listeners;
 
-use Illuminate\Auth\Events\Authenticated;
-use Illuminate\Foundation\Http\Events\RequestHandled;
+use Illuminate\Foundation\Http\Events\RequestHandled as LaravelRequestHandled;
 use Illuminate\Routing\Events\RouteMatched;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use OurEdu\RequestTracker\Models\RequestTracker;
 
 class EventsSubscriber
 {
-    // When route matched (early point) -> create initial tracker
-    public function handleRouteMatched(RouteMatched $event)
+    /**
+     * Handle RouteMatched OR Octane RequestReceived.
+     * Avoid type-hinting so we can accept different event classes.
+     */
+    public function handleRouteMatched($event)
     {
-        $request = $event->request;
-        $config = config('request-tracker', []);
+        // Try to resolve the request and route from the event (works for RouteMatched and Octane RequestReceived)
+        $request = $event->request ?? ($event instanceof RouteMatched ? $event->request : null);
+        $route   = $event->route ?? ($event instanceof RouteMatched ? $event->route : null);
 
+        if (! $request) {
+            return;
+        }
+
+        $config = config('request-tracker', []);
         if (empty($config['enabled'])) {
             return;
         }
 
-        // only track authenticated users (if that's your rule)
         if (! $request->user()) {
             return;
         }
@@ -31,37 +37,44 @@ class EventsSubscriber
         $user = $request->user();
         $userId = $user->getAuthIdentifier();
 
-        // prevent duplicated where clauses -- use meaningful unique attributes
         $attributes = [
-            'user_uuid' => $userId,
-            'method'    => $request->method(),
-            'application'=> config('app.name'),
-            'path'      => $request->path(),
-            // you can include route name for more specificity
+            'user_uuid'   => $userId,
+            'method'      => $request->method(),
+            'application' => config('app.name'),
+            'path'        => $request->path(),
         ];
 
         $values = [
-            'uuid' => (string) Str::uuid(),
+            'uuid'        => (string) Str::uuid(),
             'auth_guards' => implode(',', config('request-tracker.auth_guards', [])),
             'last_access' => now(),
-            'route_name' => $event->route?->getName() ?? null,
+            'route_name'  => $route?->getName() ?? null,
         ];
 
-        // firstOrCreate will return existing tracker if attributes match
         $tracker = RequestTracker::firstOrCreate($attributes, $values);
 
-        // expose tracker uuid on the request so later events can read it
-        $request->attributes->set('request_tracker_uuid', $tracker->uuid);
+        try {
+            $request->attributes->set('request_tracker_uuid', $tracker->uuid);
+        } catch (\Throwable $e) {
+            Log::debug('Could not set request attribute request_tracker_uuid: '.$e->getMessage());
+        }
     }
 
-    // When request handled (after response) -> update tracker
-    public function handleRequestHandled(RequestHandled $event)
+    /**
+     * Handle RequestHandled (Laravel) OR Octane RequestHandled.
+     * Avoid type-hinting for the same reason as above.
+     */
+    public function handleRequestHandled($event)
     {
-        $request = $event->request;
-        $uuid = $request->attributes->get('request_tracker_uuid');
+        $request  = $event->request ?? (isset($event->request) ? $event->request : null);
+        $response = $event->response ?? (isset($event->response) ? $event->response : null);
 
+        if (! $request) {
+            return;
+        }
+
+        $uuid = $request->attributes->get('request_tracker_uuid');
         if (! $uuid) {
-            // optional: create a new tracker here if you want to capture anonymous requests
             return;
         }
 
@@ -70,50 +83,48 @@ class EventsSubscriber
             return;
         }
 
-        // Resolve token: prefer tracker token (if you already saved it), otherwise check request
         $token = $tracker->token ?? $this->extractTokenFromRequest($request);
 
         if (! $token) {
-            // nothing to link to session
-            $tracker->update([
-                'last_access' => now(),
-            ]);
+            $tracker->update(['last_access' => now()]);
             return;
         }
 
-        // fetch user session by token
         $userSession = DB::table('user_sessions')->where('token', $token)->first();
 
-        // if session found -> update tracker with session info
         if ($userSession) {
-            // make sure we use correct fields and null-safety (some columns may not exist)
             $update = [
                 'user_session_uuid' => $userSession->uuid ?? null,
                 'role_uuid'         => $userSession->role_uuid ?? null,
                 'last_access'       => now(),
             ];
 
-            // optionally update token if not present on tracker
             if (empty($tracker->token)) {
                 $update['token'] = $token;
             }
 
             $tracker->update($update);
         } else {
-            // session not found: still update last_access and optionally mark something
-            $tracker->update([
-                'last_access' => now(),
-                // 'session_missing' => true, // optionally set a flag column
-            ]);
+            $tracker->update(['last_access' => now()]);
+        }
+
+        // optionally capture status code
+        if ($response && method_exists($response, 'getStatusCode')) {
+            try {
+                $tracker->status_code = $response->getStatusCode();
+                $tracker->save();
+            } catch (\Throwable $e) {
+                Log::debug('Failed to save tracker response: '.$e->getMessage());
+            }
         }
     }
 
     /**
      * Subscribe events to handlers
-     * (this is used by EventServiceProvider->subscribe([...]))
      */
     public function subscribe($events)
     {
+        // Normal Laravel lifecycle
         $events->listen(
             \Illuminate\Routing\Events\RouteMatched::class,
             [self::class, 'handleRouteMatched']
@@ -124,13 +135,15 @@ class EventsSubscriber
             [self::class, 'handleRequestHandled']
         );
 
-        // Octane events (conditionally register so package works without Octane)
+        // Octane events: map RequestReceived -> handleRouteMatched, RequestHandled -> handleRequestHandled
+        if (class_exists(\Laravel\Octane\Events\RequestReceived::class)) {
+            $events->listen(
+                \Laravel\Octane\Events\RequestReceived::class,
+                [self::class, 'handleRouteMatched']
+            );
+        }
 
         if (class_exists(\Laravel\Octane\Events\RequestHandled::class)) {
-            $events->listen(
-                \Laravel\Octane\Events\RequestHandled::class,
-                [self::class, 'handleRouteMatched'] // event contains ->request
-            );
             $events->listen(
                 \Laravel\Octane\Events\RequestHandled::class,
                 [self::class, 'handleRequestHandled']
@@ -138,36 +151,19 @@ class EventsSubscriber
         }
     }
 
-    /**
-     * Extract a token from the request using common locations:
-     * - Authorization Bearer header
-     * - request input 'token'
-     * - cookie 'token'
-     */
     protected function extractTokenFromRequest($request): ?string
     {
-        // bearer token header
-        $bearer = $request->bearerToken();
-        if ($bearer) {
-            return $bearer;
+        if (method_exists($request, 'bearerToken') && $request->bearerToken()) {
+            return $request->bearerToken();
         }
 
-        // common header 'x-access-token' or 'x-api-key'
         $headerToken = $request->header('x-access-token') ?? $request->header('x-api-key');
-        if ($headerToken) {
-            return $headerToken;
-        }
+        if ($headerToken) return $headerToken;
 
-        // input / query / body token
         $inputToken = $request->input('token') ?? $request->query('token');
-        if ($inputToken) {
-            return $inputToken;
-        }
+        if ($inputToken) return $inputToken;
 
-        // cookie
-        if ($request->cookies->has('token')) {
-            return $request->cookies->get('token');
-        }
+        if ($request->cookies->has('token')) return $request->cookies->get('token');
 
         return null;
     }
