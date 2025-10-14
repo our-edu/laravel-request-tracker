@@ -125,13 +125,12 @@ class EventsSubscriber
         );
 
         // Octane events (conditionally register so package works without Octane)
-        if (class_exists(\Laravel\Octane\Events\RequestReceived::class)) {
+
+        if (class_exists(\Laravel\Octane\Events\RequestHandled::class)) {
             $events->listen(
                 \Laravel\Octane\Events\RequestReceived::class,
                 [self::class, 'handleRouteMatched'] // event contains ->request
             );
-        }
-        if (class_exists(\Laravel\Octane\Events\RequestHandled::class)) {
             $events->listen(
                 \Laravel\Octane\Events\RequestHandled::class,
                 [self::class, 'handleRequestHandled']
