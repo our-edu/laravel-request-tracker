@@ -146,7 +146,7 @@ class EventsSubscriber
             'method'      => $request->method(),
             'application' => env('APP_NAME'),
             'user_session_uuid' => $userSession ? $userSession->uuid : null,
-            'role_uuid'  => $userSession ? $userSession->role_uuid : null,
+            'role_uuid'  => $userSession ? $userSession->role_id : null,
         ]);
 
         // If we flagged that a guest cookie is required, attach it to response
