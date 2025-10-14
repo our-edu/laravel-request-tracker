@@ -53,13 +53,13 @@ If you're working locally:
 "repositories": [
   {
     "type": "path",
-    "url": "../path-to-laravel-request-tracker"
+    "url": "https://github.com/our-edu/laravel-request-tracker"
   }
 ]
 ```
 2. Require it:
 ```bash
-composer require your-vendor/laravel-request-tracker
+composer require our-edu/laravel-request-tracker
 ```
 
 ---
@@ -69,8 +69,8 @@ composer require your-vendor/laravel-request-tracker
 Publish the package config file and migration to your application:
 
 ```bash
-php artisan vendor:publish --provider="YourVendor\RequestTracker\RequestTrackerServiceProvider" --tag="config"
-php artisan vendor:publish --provider="YourVendor\RequestTracker\RequestTrackerServiceProvider" --tag="migrations"
+php artisan vendor:publish --provider="OurEdu\RequestTracker\RequestTrackerServiceProvider" --tag="config"
+php artisan vendor:publish --provider="OurEdu\RequestTracker\RequestTrackerServiceProvider" --tag="migrations"
 ```
 
 Run migrations:
