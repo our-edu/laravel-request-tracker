@@ -97,10 +97,3 @@ laravel-request-tracker/
 │  │  └─ RequestTracker.php
 │  ├─ Listeners/
 │  │  └─ EventsSubscriber.php
-│  ├─ Http/
-│  │  └─ Middleware/
-│  │     └─ TrackRequestMiddleware.php
-│  └─ Facades/ (optional)
-│     └─ RequestTracker.php
-└─ tests/
-   └─ Feature/RequestTrackerTest.php
