@@ -11,11 +11,14 @@ class CreateRequestTrackersTable extends Migration
     {
         Schema::create('request_trackers', function (Blueprint $table) {
             $table->uuid('uuid')->primary();
-            $table->uuid('user_uuid')->index();
+            $table->uuid('user_uuid')->nullable()->index();
             $table->string('method')->nullable();
+            $table->string('path')->nullable();
             $table->string('auth_guards')->nullable();
             $table->uuid('role_uuid')->nullable();
             $table->string('application')->nullable();
+            $table->uuid('user_session_uuid')->nullable()->index();
+            $table->dateTime('last_access')->nullable();
             $table->timestamps();
         });
     }
