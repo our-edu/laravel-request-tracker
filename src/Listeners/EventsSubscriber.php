@@ -2,169 +2,164 @@
 
 namespace OurEdu\RequestTracker\Listeners;
 
-use Illuminate\Foundation\Http\Events\RequestHandled as LaravelRequestHandled;
+use Domain\Models\UserSession;
+use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Routing\Events\RouteMatched;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
 use OurEdu\RequestTracker\Models\RequestTracker;
 
 class EventsSubscriber
 {
     /**
-     * Handle RouteMatched OR Octane RequestReceived.
-     * Avoid type-hinting so we can accept different event classes.
+     * Called when a route is matched. Find or create the single tracker
+     * for this (user|guest) + path combination and attach uuid to the request.
      */
-    public function handleRouteMatched($event)
+    public function handleRouteMatched(RouteMatched $event)
     {
-        // Try to resolve the request and route from the event (works for RouteMatched and Octane RequestReceived)
-        $request = $event->request ?? ($event instanceof RouteMatched ? $event->request : null);
-        $route   = $event->route ?? ($event instanceof RouteMatched ? $event->route : null);
+        $request = $event->request;
+        $config  = config('request-tracker', []);
 
-        if (! $request) {
-            return;
-        }
-
-        $config = config('request-tracker', []);
         if (empty($config['enabled'])) {
             return;
         }
 
-        if (! $request->user()) {
-            return;
+        $path   = $request->path();
+        $method = $request->method();
+        $app    = env('APP_NAME');
+
+        // Prefer authenticated user
+        $user = null;
+        try {
+            $user = $request->user();
+        } catch (\Throwable $e) {
+            $user = null;
         }
 
-        $user = $request->user();
-        $userId = $user->getAuthIdentifier();
+        $tracker = null;
+        $shouldSetGuestCookie = false;
 
-        $attributes = [
-            'user_uuid'   => $userId,
-            'method'      => $request->method(),
-            'application' => config('app.name'),
-            'path'        => $request->path(),
-        ];
+        if ($user) {
+            $userId = $user->getAuthIdentifier();
 
-        $values = [
-            'uuid'        => (string) Str::uuid(),
-            'auth_guards' => implode(',', config('request-tracker.auth_guards', [])),
-            'last_access' => now(),
-            'route_name'  => $route?->getName() ?? null,
-        ];
+            // Find existing tracker for this user + path OR create one
+            // Make sure there's an index/unique constraint for performance (see migration notes)
+            $tracker = RequestTracker::firstOrCreate(
+                ['user_uuid' => $userId, 'path' => $path],
+                [
+                    'uuid'        => (string) Str::uuid(),
+                    'method'      => $method,
+                    'application' => $app,
+                    'auth_guards' => implode(',', $config['auth_guards'] ?? []),
+                    'last_access' => now(),
+                ]
+            );
+        } else {
+            // Guest flow: try cookie with tracker uuid
+            $cookieUuid = $request->cookie('request_tracker_uuid');
 
-        $tracker = RequestTracker::firstOrCreate($attributes, $values);
+            if ($cookieUuid) {
+                $tracker = RequestTracker::where('uuid', $cookieUuid)->first();
 
-        try {
+                // If tracker exists but path differs, create a new tracker for this path
+                if ($tracker && $tracker->path !== $path) {
+                    $tracker = null; // force create new below
+                }
+            }
+
+            if (!$tracker) {
+                // Create a new tracker for this guest+path
+                $tracker = RequestTracker::create([
+                    'uuid'        => (string) Str::uuid(),
+                    'method'      => $method,
+                    'application' => $app,
+                    'auth_guards' => implode(',', $config['auth_guards'] ?? []),
+                    'path'        => $path,
+                    'last_access' => now(),
+                    // user_uuid stays null for guests
+                ]);
+
+                // mark that we must set cookie on response
+                $shouldSetGuestCookie = true;
+            }
+        }
+
+        // Attach tracker uuid + a flag whether we need to set cookie (for guest)
+        if ($tracker) {
             $request->attributes->set('request_tracker_uuid', $tracker->uuid);
-        } catch (\Throwable $e) {
-            Log::debug('Could not set request attribute request_tracker_uuid: '.$e->getMessage());
+            if ($shouldSetGuestCookie) {
+                $request->attributes->set('request_tracker_set_cookie', true);
+            }
         }
     }
 
     /**
-     * Handle RequestHandled (Laravel) OR Octane RequestHandled.
-     * Avoid type-hinting for the same reason as above.
+     * Called after the response. Update last_access and optionally set cookie for guests.
      */
-    public function handleRequestHandled($event)
+    public function handleRequestHandled(RequestHandled $event)
     {
-        $request  = $event->request ?? (isset($event->request) ? $event->request : null);
-        $response = $event->response ?? (isset($event->response) ? $event->response : null);
-
-        if (! $request) {
-            return;
-        }
+        $request  = $event->request;
+        $response = $event->response;
 
         $uuid = $request->attributes->get('request_tracker_uuid');
-        if (! $uuid) {
+        if (!$uuid) {
             return;
         }
 
         $tracker = RequestTracker::where('uuid', $uuid)->first();
-        if (! $tracker) {
+        if (!$tracker) {
             return;
         }
 
-        $token = $tracker->token ?? $this->extractTokenFromRequest($request);
-
-        if (! $token) {
-            $tracker->update(['last_access' => now()]);
-            return;
-        }
-
-        $userSession = DB::table('user_sessions')->where('token', $token)->first();
-
-        if ($userSession) {
-            $update = [
-                'user_session_uuid' => $userSession->uuid ?? null,
-                'role_uuid'         => $userSession->role_uuid ?? null,
-                'last_access'       => now(),
-            ];
-
-            if (empty($tracker->token)) {
-                $update['token'] = $token;
+        // Resolve user id (update if needed)
+        $userId = null;
+        try {
+            if ($user = $request->user()) {
+                $userId = $user->getAuthIdentifier();
+            } else {
+                // look through configured auth guards just in case
+                foreach (config('request-tracker.auth_guards', []) as $guard) {
+                    if ($u = Auth::guard($guard)->user()) {
+                        $userId = $u->getAuthIdentifier();
+                        break;
+                    }
+                }
             }
-
-            $tracker->update($update);
-        } else {
-            $tracker->update(['last_access' => now()]);
+        } catch (\Throwable $e) {
+            $userId = null;
         }
 
-        // optionally capture status code
-        if ($response && method_exists($response, 'getStatusCode')) {
-            try {
-                $tracker->status_code = $response->getStatusCode();
-                $tracker->save();
-            } catch (\Throwable $e) {
-                Log::debug('Failed to save tracker response: '.$e->getMessage());
-            }
-        }
+        // Update last_access and other fields
+        $token = $request->bearerToken();
+        $userSession = UserSession::where([
+            'token'=> $token,
+            'user_uuid' => $userId
+        ])->first();
+        $tracker->update([
+            'user_uuid'   => $userId,
+            'last_access' => now(),
+            'path'        => $request->path(),
+            'method'      => $request->method(),
+            'application' => env('APP_NAME'),
+            'user_session_uuid' => $userSession ? $userSession->uuid : null,
+            'role_uuid'  => $userSession ? $userSession->role_uuid : null,
+            // Optionally log status code or other response details if needed
+            // 'status_code' => $response ? $response->getStatusCode() : null,
+        ]);
+
     }
 
-    /**
-     * Subscribe events to handlers
-     */
     public function subscribe($events)
     {
-        // Normal Laravel lifecycle
         $events->listen(
             \Illuminate\Routing\Events\RouteMatched::class,
-            [self::class, 'handleRouteMatched']
+            [EventsSubscriber::class, 'handleRouteMatched']
         );
 
         $events->listen(
             \Illuminate\Foundation\Http\Events\RequestHandled::class,
-            [self::class, 'handleRequestHandled']
+            [EventsSubscriber::class, 'handleRequestHandled']
         );
-
-        // Octane events: map RequestReceived -> handleRouteMatched, RequestHandled -> handleRequestHandled
-        if (class_exists(\Laravel\Octane\Events\RequestReceived::class)) {
-            $events->listen(
-                \Laravel\Octane\Events\RequestReceived::class,
-                [self::class, 'handleRouteMatched']
-            );
-        }
-
-        if (class_exists(\Laravel\Octane\Events\RequestHandled::class)) {
-            $events->listen(
-                \Laravel\Octane\Events\RequestHandled::class,
-                [self::class, 'handleRequestHandled']
-            );
-        }
-    }
-
-    protected function extractTokenFromRequest($request): ?string
-    {
-        if (method_exists($request, 'bearerToken') && $request->bearerToken()) {
-            return $request->bearerToken();
-        }
-
-        $headerToken = $request->header('x-access-token') ?? $request->header('x-api-key');
-        if ($headerToken) return $headerToken;
-
-        $inputToken = $request->input('token') ?? $request->query('token');
-        if ($inputToken) return $inputToken;
-
-        if ($request->cookies->has('token')) return $request->cookies->get('token');
-
-        return null;
     }
 }
