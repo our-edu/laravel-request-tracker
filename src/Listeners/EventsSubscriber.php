@@ -24,8 +24,6 @@ class EventsSubscriber
         if (empty($config['enabled'])) {
             return;
         }
-
-        $path   = $request->path();
         $method = $request->method();
         $app    = env('APP_NAME');
 
@@ -99,7 +97,7 @@ class EventsSubscriber
                 $tracker = RequestTracker::where('uuid', $cookieUuid)->first();
 
                 // If tracker exists but path differs, create a new tracker for this path
-                if ($tracker && $tracker->path !== $path) {
+                if ($tracker && $tracker->path != $path) {
                     $tracker = null; // force create new below
                 }
             }
