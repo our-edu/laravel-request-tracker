@@ -80,7 +80,7 @@ class EventsSubscriber
             // Find existing tracker for this user + path OR create one
             // Make sure there's an index/unique constraint for performance (see migration notes)
             $tracker = RequestTracker::firstOrCreate(
-                ['user_uuid' => $userId, 'path' => $path],
+                ['user_uuid' => $userId, 'application' => $app],
                 [
                     'uuid'        => (string) Str::uuid(),
                     'method'      => $method,
@@ -97,7 +97,7 @@ class EventsSubscriber
                 $tracker = RequestTracker::where('uuid', $cookieUuid)->first();
 
                 // If tracker exists but path differs, create a new tracker for this path
-                if ($tracker && $tracker->path != $path) {
+                if ($tracker && $tracker->application != $app ) {
                     $tracker = null; // force create new below
                 }
             }
