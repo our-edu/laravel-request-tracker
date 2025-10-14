@@ -29,6 +29,42 @@ class EventsSubscriber
         $method = $request->method();
         $app    = env('APP_NAME');
 
+        // normalize current path (no leading/trailing slash, lowercase for safe matching)
+        $path = trim($request->path(), '/');           // e.g. "admission/api/v1/ar/parent/look-up"
+        $path = strtolower($path);                     // make matching case-insensitive
+
+        // check exclude patterns
+        $excludes = $config['exclude'] ?? [];
+        foreach ($excludes as $pattern) {
+            $pattern = trim($pattern, '/');
+            $pattern = strtolower($pattern);
+
+            // 1) regex pattern: prefix with "regex:"
+            if (Str::startsWith($pattern, 'regex:')) {
+                $regex = substr($pattern, 6);
+                if (@preg_match($regex, $path)) {
+                    // matched -> skip tracking
+                    return;
+                }
+                continue;
+            }
+
+            // 2) wildcard pattern: contains '*'
+            if (strpos($pattern, '*') !== false) {
+                // fnmatch expects pattern in shell wildcard format
+                // ensure we match the whole path
+                if (fnmatch($pattern, $path)) {
+                    return;
+                }
+                continue;
+            }
+
+            // 3) default: treat as suffix (what you want for v1/ar/parent/look-up)
+            if (Str::endsWith($path, $pattern)) {
+                return;
+            }
+        }
+
         // Prefer authenticated user
         $user = null;
         try {
