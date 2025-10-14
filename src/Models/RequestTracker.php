@@ -1,6 +1,6 @@
 <?php
 
-namespace OurEdu\RequestTraker\Models;
+namespace OurEdu\RequestTracker\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
