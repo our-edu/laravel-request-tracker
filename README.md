@@ -96,4 +96,4 @@ laravel-request-tracker/
 │  ├─ Models/
 │  │  └─ RequestTracker.php
 │  ├─ Listeners/
-│  │  └─ EventsSubscriber.php
+   └─ EventsSubscriber.php
