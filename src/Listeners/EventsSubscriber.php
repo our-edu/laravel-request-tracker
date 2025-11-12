@@ -179,8 +179,8 @@ class EventsSubscriber
             'path'        => $request->path(),
             'method'      => $request->method(),
             'application' => env('APP_NAME'),
-            'user_session_uuid' =>  $token ? $userSession?->uuid : null ,
-            'role_uuid'  => $token ? $userSession?->role_id : null ,
+           // 'user_session_uuid' =>  $token ? $userSession?->uuid : null ,
+            //'role_uuid'  => $token ? $userSession?->role_id : null ,
         ]);
 
         // If we flagged that a guest cookie is required, attach it to response
