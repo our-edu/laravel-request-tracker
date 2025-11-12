@@ -2,7 +2,6 @@
 ### Laravel template
 ./vendor
 .idea
-composer.lock
 
 
 vendor/
