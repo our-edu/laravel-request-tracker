@@ -1,22 +1,48 @@
 {
-  "name": "our-edu/laravel-request-tracker",
-  "description": "Track incoming requests lifecycle and store request traces in DB (auto installable).",
-  "type": "library",
-  "license": "MIT",
-  "autoload": {
-    "psr-4": {
-      "OurEdu\\RequestTracker\\": "src/"
+    "name": "our-edu/laravel-request-tracker",
+    "description": "Track incoming request lifecycle events and persist traces to the database (auto-discoverable Laravel package).",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["laravel", "request", "tracker", "http", "logging", "middleware"],
+    "homepage": "https://github.com/our-edu/laravel-request-tracker",
+    "support": {
+        "issues": "https://github.com/our-edu/laravel-request-tracker/issues",
+        "source": "https://github.com/our-edu/laravel-request-tracker"
+    },
+    "authors": [{
+        "name": "Our Education",
+        "role": "Developer"
+    }],
+    "require": {
+        "php": "^8.0",
+        "illuminate/support": "^9.0|^10.0|^11.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^7.0|^8.0|^9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "OurEdu\\RequestTracker\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "OurEdu\\RequestTracker\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "OurEdu\\RequestTracker\\RequestTrackerServiceProvider"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true
     }
-  },
-  "extra": {
-    "laravel": {
-      "providers": [
-        "OurEdu\\RequestTracker\\RequestTrackerServiceProvider"
-      ]
-    }
-  },
-  "require": {
-    "php": ">=8.0",
-    "illuminate/support": "^9|^10|^11"
-  }
 }
