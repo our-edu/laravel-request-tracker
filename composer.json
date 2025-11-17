@@ -22,18 +22,18 @@
     },
     "autoload": {
         "psr-4": {
-            "OurEducation\\RequestTracker\\": "src/"
+            "OurEdu\\RequestTracker\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "OurEducation\\RequestTracker\\Tests\\": "tests/"
+            "OurEdu\\RequestTracker\\Tests\\": "tests/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "OurEducation\\RequestTracker\\RequestTrackerServiceProvider"
+                "OurEdu\\RequestTracker\\RequestTrackerServiceProvider"
             ]
         },
         "branch-alias": {
