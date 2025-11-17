@@ -1,5 +1,5 @@
 {
-    "name": "our-edu/laravel-request-tracker",
+    "name": "our-education/laravel-request-tracker",
     "description": "Track incoming request lifecycle events and persist traces to the database (auto-discoverable Laravel package).",
     "type": "library",
     "license": "MIT",
