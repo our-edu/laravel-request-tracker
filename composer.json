@@ -15,10 +15,10 @@
     }],
     "require": {
         "php": "^8.0",
-        "illuminate/support": "^8.0|^9.0|^10.0|^11.0" < --UPDATED FOR LARAVEL 8 +
+        "illuminate/support": "^8.0|^9.0|^10.0|^11.0"
     },
     "require-dev": {
-        "orchestra/testbench": "^6.0|^7.0|^8.0|^9.0" < --UPDATED FOR LARAVEL 8 + TESTING
+        "orchestra/testbench": "^6.0|^7.0|^8.0|^9.0"
     },
     "autoload": {
         "psr-4": {
