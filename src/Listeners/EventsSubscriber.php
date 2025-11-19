@@ -91,6 +91,11 @@ class EventsSubscriber
             }
         }
 
+        if(is_null($roleUuid))
+        {
+            return;
+        }
+
         // Get today's date for unique daily tracking
         $today = now()->format('Y-m-d');
 
