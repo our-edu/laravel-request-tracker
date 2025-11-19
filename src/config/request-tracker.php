@@ -8,6 +8,7 @@ return [
     'exclude' => [
         // exact path
         'parent/look-up',
+        '', // Root path /
     ],
 
     // Which guard to attempt when resolving user
