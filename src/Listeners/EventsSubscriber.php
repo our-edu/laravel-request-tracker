@@ -71,8 +71,7 @@ class EventsSubscriber
             $user = null;
         }
 
-        // Skip if user is not authenticated
-        if (!$user) {
+        if (!$user || is_null($user) || is_null($user->getAuthIdentifier())) {
             return;
         }
 
