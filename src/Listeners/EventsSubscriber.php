@@ -76,7 +76,7 @@ class EventsSubscriber
         }
 
         $userId = $user->getAuthIdentifier();
-        
+
         // Get bearer token and resolve role from user_sessions table
         $roleUuid = null;
         $token = $request->bearerToken();
@@ -85,15 +85,11 @@ class EventsSubscriber
                 'user_uuid' => $userId,
                 'token'     => $token
             ])->first();
-            
-            if ($userSession) {
-                $roleUuid = $userSession->role_id ?? null;
-            }
-        }
 
-        if(is_null($roleUuid))
-        {
-            return;
+            if (!$userSession || is_null($userSession->role_id)) {
+                return; 
+            }
+            $roleUuid = $userSession->role_id;
         }
 
         // Get today's date for unique daily tracking
@@ -173,7 +169,6 @@ class EventsSubscriber
                 'user_uuid' => $userId,
                 'token'     => $token
             ])->first();
-
         }
 
         // Update last_access timestamp
