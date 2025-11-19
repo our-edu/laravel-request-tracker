@@ -31,5 +31,5 @@ class RequestTrackerServiceProvider extends ServiceProvider
 
         Event::subscribe(EventsSubscriber::class);
 
-    }u
+    }
 }
