@@ -18,10 +18,10 @@ class RequestTracker extends Model
         'application',
         'auth_guards',
         'user_session_uuid',
-        'last_access'   ,
+        'last_access',
+        'date',
         'path'
     ];
 
     public $table = 'request_trackers';
-
 }

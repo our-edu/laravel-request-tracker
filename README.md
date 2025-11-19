@@ -41,7 +41,7 @@ Default behavior is **event-driven** (creates a trace at `RouteMatched` and upda
 
 ### 1) Via Composer (Packagist)
 ```bash
-composer require your-vendor/laravel-request-tracker
+composer require our-education/laravel-request-tracker
 ```
 
 Because the package registers a provider using Laravel auto-discovery, you normally **don't** need to add the provider to `config/app.php`.
@@ -69,8 +69,8 @@ composer require our-edu/laravel-request-tracker
 Publish the package config file and migration to your application:
 
 ```bash
-php artisan vendor:publish --provider="OurEdu\RequestTracker\RequestTrackerServiceProvider" --tag="config"
-php artisan vendor:publish --provider="OurEdu\RequestTracker\RequestTrackerServiceProvider" --tag="migrations"
+php artisan vendor:publish --provider="OurEducation\RequestTracker\RequestTrackerServiceProvider" --tag="config"
+php artisan vendor:publish --provider="OurEducation\RequestTracker\RequestTrackerServiceProvider" --tag="migrations"
 ```
 
 Run migrations:

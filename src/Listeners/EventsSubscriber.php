@@ -63,7 +63,7 @@ class EventsSubscriber
             }
         }
 
-        // Prefer authenticated user
+        // Only track authenticated users
         $user = null;
         try {
             $user = $request->user();
@@ -71,60 +71,60 @@ class EventsSubscriber
             $user = null;
         }
 
-        $tracker = null;
-        $shouldSetGuestCookie = true;
+        // Skip if user is not authenticated
+        if (!$user) {
+            return;
+        }
 
-        if ($user) {
-            $userId = $user->getAuthIdentifier();
-
-            // Find existing tracker for this user + path OR create one
-            // Make sure there's an index/unique constraint for performance (see migration notes)
-            $tracker = RequestTracker::firstOrCreate(
-                ['user_uuid' => $userId, 'application' => $app],
-                [
-                    'uuid'        => (string) Str::uuid(),
-                    'method'      => $method,
-                    'application' => $app,
-                    'auth_guards' => implode(',', $config['auth_guards'] ?? []),
-                    'last_access' => now(),
-                ]
-            );
-        } else {
-            // Guest flow: try cookie with tracker uuid
-            $cookieUuid = $request->cookie('request_tracker_uuid');
-
-            if ($cookieUuid) {
-                $tracker = RequestTracker::where('uuid', $cookieUuid)->first();
-
-                // If tracker exists but path differs, create a new tracker for this path
-                if ($tracker && $tracker->application != $app ) {
-                    $tracker = null; // force create new below
-                }
-            }
-
-            if (!$tracker) {
-                // Create a new tracker for this guest+path
-                $tracker = RequestTracker::create([
-                    'uuid'        => (string) Str::uuid(),
-                    'method'      => $method,
-                    'application' => $app,
-                    'auth_guards' => implode(',', $config['auth_guards'] ?? []),
-                    'path'        => $path,
-                    'last_access' => now(),
-                    // user_uuid stays null for guests
-                ]);
-
-                // mark that we must set cookie on response
-                $shouldSetGuestCookie = true;
+        $userId = $user->getAuthIdentifier();
+        
+        // Get bearer token and resolve role from user_sessions table
+        $roleUuid = null;
+        $token = $request->bearerToken();
+        if ($token) {
+            $userSession = DB::table('user_sessions')->where([
+                'user_uuid' => $userId,
+                'token'     => $token
+            ])->first();
+            
+            if ($userSession) {
+                $roleUuid = $userSession->role_id ?? null;
             }
         }
 
-        // Attach tracker uuid + a flag whether we need to set cookie (for guest)
+        // Get today's date for unique daily tracking
+        $today = now()->format('Y-m-d');
+
+        // Check if a record already exists for this user + role + date
+        $existingTracker = RequestTracker::where('user_uuid', $userId)
+            ->where('role_uuid', $roleUuid)
+            ->where('date', $today)
+            ->first();
+
+        // If record exists for today, skip creating a new one
+        if ($existingTracker) {
+            $existingTracker->update([
+                'last_access' => now(),
+            ]);
+            $tracker = $existingTracker;
+        } else {
+            // Create new tracker for this user + role + date
+            $tracker = RequestTracker::create([
+                'uuid'        => (string) Str::uuid(),
+                'user_uuid'   => $userId,
+                'role_uuid'   => $roleUuid,
+                'method'      => $method,
+                'application' => $app,
+                'auth_guards' => implode(',', $config['auth_guards'] ?? []),
+                'path'        => $path,
+                'date'        => $today,
+                'last_access' => now(),
+            ]);
+        }
+
+        // Attach tracker uuid to request
         if ($tracker) {
             $request->attributes->set('request_tracker_uuid', $tracker->uuid);
-            if ($shouldSetGuestCookie) {
-                $request->attributes->set('request_tracker_set_cookie', true);
-            }
         }
     }
 
@@ -172,26 +172,10 @@ class EventsSubscriber
 
         }
 
-        // Update last_access and other fields
+        // Update last_access timestamp
         $tracker->update([
-            'user_uuid'   => $userId,
             'last_access' => now(),
-            'path'        => $request->path(),
-            'method'      => $request->method(),
-            'application' => env('APP_NAME'),
-           // 'user_session_uuid' =>  $token ? $userSession?->uuid : null ,
-            //'role_uuid'  => $token ? $userSession?->role_id : null ,
         ]);
-
-        // If we flagged that a guest cookie is required, attach it to response
-        if ($request->attributes->get('request_tracker_set_cookie')) {
-            // set a long-lived, httpOnly cookie that is available to future requests
-            // adjust domain/path/secure flags to your needs
-            $cookie = cookie()->forever('request_tracker_uuid', $tracker->uuid);
-            if ($response) {
-                $response->headers->setCookie($cookie);
-            }
-        }
     }
 
     public function subscribe($events)

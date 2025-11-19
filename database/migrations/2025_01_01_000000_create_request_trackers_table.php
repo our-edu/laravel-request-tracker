@@ -22,7 +22,11 @@ return new class extends Migration {
             $table->string('application')->nullable();
             $table->uuid('user_session_uuid')->nullable()->index();
             $table->dateTime('last_access')->nullable();
+            $table->date('date')->nullable()->index(); // Store date only for daily tracking
             $table->timestamps();
+            
+            // Composite index for efficient daily unique user+role lookups
+            $table->index(['user_uuid', 'role_uuid', 'date']);
         });
     }
 
