@@ -5,10 +5,10 @@ namespace OurEdu\RequestTracker\Listeners;
 use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Routing\Events\RouteMatched;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cookie;
-use OurEdu\RequestTracker\Models\RequestTracker;
 use Illuminate\Support\Facades\DB;
+use OurEdu\RequestTracker\Models\RequestTracker;
+use OurEdu\RequestTracker\Models\UserAccessDetail;
+use OurEdu\RequestTracker\Services\ModuleExtractor;
 
 class EventsSubscriber
 {
@@ -79,6 +79,7 @@ class EventsSubscriber
 
         // Get bearer token and resolve role from user_sessions table
         $roleUuid = null;
+        $userSessionUuid = null;
         $token = $request->bearerToken();
         if ($token) {
             $userSession = DB::table('user_sessions')->where([
@@ -90,10 +91,24 @@ class EventsSubscriber
                 return; 
             }
             $roleUuid = $userSession->role_id;
+            $userSessionUuid = $userSession->uuid ?? null;
         }
 
         // Get today's date for unique daily tracking
         $today = now()->format('Y-m-d');
+        
+        // Get route details
+        $route = $request->route();
+        $routeName = $route ? $route->getName() : null;
+        $controllerAction = null;
+        if ($route && $route->getActionName() !== 'Closure') {
+            $controllerAction = $route->getActionName();
+        }
+        
+        // Get device and network info
+        $ipAddress = $request->ip();
+        $userAgent = $request->userAgent();
+        $deviceInfo = $this->parseUserAgent($userAgent);
 
         // Check if a record already exists for this user + role + date
         $existingTracker = RequestTracker::where('user_uuid', $userId)
@@ -101,8 +116,9 @@ class EventsSubscriber
             ->where('date', $today)
             ->first();
 
-        // If record exists for today, skip creating a new one
+        // If record exists for today, increment access count
         if ($existingTracker) {
+            $existingTracker->increment('access_count');
             $existingTracker->update([
                 'last_access' => now(),
             ]);
@@ -110,26 +126,81 @@ class EventsSubscriber
         } else {
             // Create new tracker for this user + role + date
             $tracker = RequestTracker::create([
-                'uuid'        => (string) Str::uuid(),
-                'user_uuid'   => $userId,
-                'role_uuid'   => $roleUuid,
-                'method'      => $method,
-                'application' => $app,
-                'auth_guards' => implode(',', $config['auth_guards'] ?? []),
-                'path'        => $path,
-                'date'        => $today,
-                'last_access' => now(),
+                'uuid'              => (string) Str::uuid(),
+                'user_uuid'         => $userId,
+                'role_uuid'         => $roleUuid,
+                'user_session_uuid' => $userSessionUuid,
+                'application'       => $app,
+                'date'              => $today,
+                'access_count'      => 1,
+                'first_access'      => now(),
+                'last_access'       => now(),
+                'ip_address'        => $ipAddress,
+                'user_agent'        => $userAgent,
+                'device_type'       => $deviceInfo['device_type'],
+                'browser'           => $deviceInfo['browser'],
+                'platform'          => $deviceInfo['platform'],
             ]);
         }
+
+        // Track the specific endpoint visited
+        $this->trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config);
 
         // Attach tracker uuid to request
         if ($tracker) {
             $request->attributes->set('request_tracker_uuid', $tracker->uuid);
+            $request->attributes->set('request_user_uuid', $userId);
+            $request->attributes->set('request_role_uuid', $roleUuid);
         }
     }
 
     /**
-     * Called after the response. Update last_access and optionally set cookie for guests.
+     * Track the specific endpoint/module visited
+     */
+    protected function trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config)
+    {
+        $endpoint = $request->path();
+        
+        // Extract module, submodule, and annotation
+        $extracted = ModuleExtractor::extract($endpoint, $routeName, $controllerAction, $config);
+        
+        // Check if this endpoint was already visited today by this user+role
+        $existingDetail = UserAccessDetail::where('user_uuid', $tracker->user_uuid)
+            ->where('role_uuid', $tracker->role_uuid)
+            ->where('endpoint', $endpoint)
+            ->where('date', $today)
+            ->first();
+
+        if ($existingDetail) {
+            // Increment visit count for this endpoint
+            $existingDetail->increment('visit_count');
+            $existingDetail->update([
+                'last_visit' => now(),
+            ]);
+        } else {
+            // Create new endpoint visit record
+            UserAccessDetail::create([
+                'uuid'              => (string) Str::uuid(),
+                'tracker_uuid'      => $tracker->uuid,
+                'user_uuid'         => $tracker->user_uuid,
+                'role_uuid'         => $tracker->role_uuid,
+                'date'              => $today,
+                'method'            => $request->method(),
+                'endpoint'          => $endpoint,
+                'route_name'        => $routeName,
+                'controller_action' => $controllerAction,
+                'module'            => $extracted['module'],
+                'submodule'         => $extracted['submodule'],
+                'annotation'        => $extracted['annotation'],
+                'visit_count'       => 1,
+                'first_visit'       => now(),
+                'last_visit'        => now(),
+            ]);
+        }
+    }
+
+    /**
+     * Called after the response. Update last access time.
      */
     public function handleRequestHandled(RequestHandled $event)
     {
@@ -146,35 +217,72 @@ class EventsSubscriber
             return;
         }
 
-        // Resolve user id (update if needed)
-        $userId = null;
-        try {
-            if ($user = $request->user()) {
-                $userId = $user->getAuthIdentifier();
-            } else {
-                // look through configured auth guards just in case
-                foreach (config('request-tracker.auth_guards', []) as $guard) {
-                    if ($u = Auth::guard($guard)->user()) {
-                        $userId = $u->getAuthIdentifier();
-                        break;
-                    }
-                }
-            }
-        } catch (\Throwable $e) {
-            $userId = null;
-        }
-        $token = $request->bearerToken();
-        if ($token) {
-            $userSession = DB::table('user_sessions')->where([
-                'user_uuid' => $userId,
-                'token'     => $token
-            ])->first();
-        }
-
-        // Update last_access timestamp
+        // Update last access
         $tracker->update([
             'last_access' => now(),
         ]);
+    }
+
+    /**
+     * Parse user agent to extract device info
+     */
+    protected function parseUserAgent(?string $userAgent): array
+    {
+        if (!$userAgent) {
+            return [
+                'device_type' => 'unknown',
+                'browser' => 'unknown',
+                'platform' => 'unknown',
+            ];
+        }
+        
+        $userAgent = strtolower($userAgent);
+        
+        // Detect device type
+        $deviceType = 'desktop';
+        if (str_contains($userAgent, 'mobile')) {
+            $deviceType = 'mobile';
+        } elseif (str_contains($userAgent, 'tablet') || str_contains($userAgent, 'ipad')) {
+            $deviceType = 'tablet';
+        } elseif (str_contains($userAgent, 'bot') || str_contains($userAgent, 'crawler') || str_contains($userAgent, 'spider')) {
+            $deviceType = 'bot';
+        }
+        
+        // Detect browser
+        $browser = 'unknown';
+        if (str_contains($userAgent, 'edg')) {
+            $browser = 'Edge';
+        } elseif (str_contains($userAgent, 'chrome')) {
+            $browser = 'Chrome';
+        } elseif (str_contains($userAgent, 'safari') && !str_contains($userAgent, 'chrome')) {
+            $browser = 'Safari';
+        } elseif (str_contains($userAgent, 'firefox')) {
+            $browser = 'Firefox';
+        } elseif (str_contains($userAgent, 'opera') || str_contains($userAgent, 'opr')) {
+            $browser = 'Opera';
+        } elseif (str_contains($userAgent, 'msie') || str_contains($userAgent, 'trident')) {
+            $browser = 'Internet Explorer';
+        }
+        
+        // Detect platform
+        $platform = 'unknown';
+        if (str_contains($userAgent, 'windows')) {
+            $platform = 'Windows';
+        } elseif (str_contains($userAgent, 'mac') || str_contains($userAgent, 'darwin')) {
+            $platform = 'macOS';
+        } elseif (str_contains($userAgent, 'iphone') || str_contains($userAgent, 'ipad')) {
+            $platform = 'iOS';
+        } elseif (str_contains($userAgent, 'android')) {
+            $platform = 'Android';
+        } elseif (str_contains($userAgent, 'linux')) {
+            $platform = 'Linux';
+        }
+        
+        return [
+            'device_type' => $deviceType,
+            'browser' => $browser,
+            'platform' => $platform,
+        ];
     }
 
     public function subscribe($events)
