@@ -30,9 +30,9 @@ class RequestTrackerServiceProvider extends ServiceProvider
 
         $this->publishes([
             __DIR__.'/../database/migrations/2025_01_01_000000_create_request_trackers_table.php' =>
-                database_path('migrations/'.date('Y_m_d_His').'_create_request_trackers_table.php'),
+                database_path('migrations/'.date('Y_m_d_His', time()).'_create_request_trackers_table.php'),
             __DIR__.'/../database/migrations/2025_01_01_000001_create_access_logs_table.php' =>
-                database_path('migrations/'.date('Y_m_d_His', time() + 1).'_create_access_logs_table.php'),
+                database_path('migrations/'.date('Y_m_d_His', time() + 2).'_create_user_access_details_table.php'),
         ], 'migrations');
 
         // register the event subscriber
