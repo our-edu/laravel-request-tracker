@@ -13,10 +13,10 @@ class UserAccessStatsCommand extends Command
                             {--date= : Specific date (Y-m-d format)}
                             {--from= : Start date for range (Y-m-d format)}
                             {--to= : End date for range (Y-m-d format)}
-                            {--role= : Filter by specific role UUID (optional)}
+                            {--role= : Filter by specific role name (optional)}
                             {--top=10 : Number of top results to show}';
 
-    protected $description = 'Display user access statistics by national ID (general or filtered by role)';
+    protected $description = 'Display user access statistics by national ID (general or filtered by role name)';
 
     public function handle()
     {
@@ -39,7 +39,7 @@ class UserAccessStatsCommand extends Command
                 $this->error("User not found with national ID: {$nationalId}");
                 return Command::FAILURE;
             }
-            $this->showUserStats($user->uuid, $nationalId, $date, $from, $to, $roleUuid);
+            $this->showUserStats($user->uuid, $nationalId, $date, $from, $to, $roleName);
         } else {
             $this->showOverallStats($date, $from, $to, $top, $roleName);
         }
@@ -47,11 +47,11 @@ class UserAccessStatsCommand extends Command
         return Command::SUCCESS;
     }
 
-    protected function showUserStats($userUuid, $nationalId, $date, $from, $to, $roleUuid = null)
+    protected function showUserStats($userUuid, $nationalId, $date, $from, $to, $roleName = null)
     {
         $this->info("📊 Access Statistics for User (National ID: {$nationalId}):");
-        if ($roleUuid) {
-            $this->info("🎭 Role Filter: {$roleUuid}");
+        if ($roleName) {
+            $this->info("🎭 Role Filter: {$roleName}");
         } else {
             $this->comment("📋 Showing all roles (general report)");
         }
@@ -59,8 +59,8 @@ class UserAccessStatsCommand extends Command
 
         $query = RequestTracker::forUser($userUuid);
         
-        if ($roleUuid) {
-            $query->where('role_uuid', $roleUuid);
+        if ($roleName) {
+            $query->where('role_name', $roleName);
         }
 
         if ($date) {

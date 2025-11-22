@@ -137,14 +137,13 @@ class EventsSubscriber
             $roleUuid = $userSession->role_id;
             $userSessionUuid = $userSession->uuid ?? null;
             
-            // Get role name from role_translations table (locale: en)
+            // Get role name from roles table
             $roleName = null;
             if ($roleUuid) {
-                $roleTranslation = DB::table('role_translations')
-                    ->where('role_id', $roleUuid)
-                    ->where('locale', 'en')
+                $role = DB::table('roles')
+                    ->where('id', $roleUuid)
                     ->first();
-                $roleName = $roleTranslation ? $roleTranslation->display_name : null;
+                $roleName = $role ? $role->name : null;
             }
             
             logger()->info('[Request Tracker] User session found', [

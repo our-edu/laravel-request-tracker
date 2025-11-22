@@ -12,7 +12,7 @@ class ModuleAccessCommand extends Command
                             {module : The module name to search for}
                             {--from= : Start date (Y-m-d)}
                             {--to= : End date (Y-m-d)}
-                            {--role= : Filter by specific role UUID (optional)}
+                            {--role= : Filter by specific role name (optional)}
                             {--submodule= : Filter by specific submodule}
                             {--limit=20 : Number of users to display}';
 
@@ -27,15 +27,15 @@ class ModuleAccessCommand extends Command
         $limit = $this->option('limit');
         
         // Interactive role selection
-        $role = $this->option('role');
-        if (!$role && $this->confirm('Do you want to filter by a specific role?', false)) {
-            $role = $this->ask('Enter the role UUID');
+        $roleName = $this->option('role');
+        if (!$roleName && $this->confirm('Do you want to filter by a specific role?', false)) {
+            $roleName = $this->ask('Enter the role name');
         }
 
         $this->info("📊 Module Access Report: {$module}");
         $this->info("📅 Date Range: {$from} to {$to}");
-        if ($role) {
-            $this->info("🎭 Role Filter: {$role}");
+        if ($roleName) {
+            $this->info("🎭 Role Filter: {$roleName}");
         } else {
             $this->comment("📋 General report (all roles)");
         }
@@ -48,8 +48,8 @@ class ModuleAccessCommand extends Command
             ? UserAccessDetail::whoAccessedSubmodule($module, $submodule, $from, $to)
             : UserAccessDetail::whoAccessedModule($module, $from, $to);
 
-        if ($role) {
-            $query->where('role_uuid', $role);
+        if ($roleName) {
+            $query->where('role_name', $roleName);
         }
 
         $users = $query->limit($limit)->get();
@@ -60,11 +60,11 @@ class ModuleAccessCommand extends Command
         }
 
         $this->table(
-            ['User UUID', 'Role UUID', 'Total Visits', 'Unique Endpoints', 'First Access', 'Last Access'],
+            ['User UUID', 'Role Name', 'Total Visits', 'Unique Endpoints', 'First Access', 'Last Access'],
             $users->map(function ($user) {
                 return [
                     $user->user_uuid,
-                    $user->role_uuid,
+                    $user->role_name,
                     $user->total_visits,
                     $user->unique_endpoints,
                     $user->first_access->format('Y-m-d H:i:s'),

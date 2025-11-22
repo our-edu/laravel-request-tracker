@@ -12,7 +12,7 @@ class UserJourneyCommand extends Command
     protected $signature = 'tracker:user-journey 
                             {national_id? : The user national ID to track (optional for general report)}
                             {--date= : Specific date (Y-m-d format)}
-                            {--role= : Filter by role UUID}
+                            {--role= : Filter by role name}
                             {--module= : Filter by module name}
                             {--limit=50 : Number of journeys to show for general report}';
 
@@ -25,11 +25,11 @@ class UserJourneyCommand extends Command
         $module = $this->option('module');
         
         // Interactive role selection
-        $roleUuid = $this->option('role');
-        if (!$roleUuid && $this->confirm('Do you want to filter by a specific role?', false)) {
-            $roleUuid = $this->ask('Enter the role UUID');
+        $roleName = $this->option('role');
+        if (!$roleName && $this->confirm('Do you want to filter by a specific role?', false)) {
+            $roleName = $this->ask('Enter the role name');
         }
-        
+            
         if ($nationalId) {
             // Resolve user UUID from national ID
             $user = DB::table('users')->where('national_id', $nationalId)->first();
@@ -37,19 +37,19 @@ class UserJourneyCommand extends Command
                 $this->error("User not found with national ID: {$nationalId}");
                 return Command::FAILURE;
             }
-            return $this->showUserJourney($user->uuid, $nationalId, $date, $roleUuid, $module);
+            return $this->showUserJourney($user->uuid, $nationalId, $date, $roleName, $module);
         } else {
-            return $this->showGeneralJourney($date, $roleUuid, $module);
+            return $this->showGeneralJourney($date, $roleName, $module);
         }
     }
     
-    protected function showUserJourney($userUuid, $nationalId, $date, $roleUuid, $module)
+    protected function showUserJourney($userUuid, $nationalId, $date, $roleName, $module)
     {
 
         $this->info("🗺️  User Journey for National ID: {$nationalId}");
         $this->info("📅 Date: {$date}");
-        if ($roleUuid) {
-            $this->info("🎭 Role Filter: {$roleUuid}");
+        if ($roleName) {
+            $this->info("🎭 Role Filter: {$roleName}");
         } else {
             $this->comment("📋 All roles");
         }
@@ -57,8 +57,8 @@ class UserJourneyCommand extends Command
 
         // Get daily summary
         $tracker = RequestTracker::forUser($userUuid)->forDate($date);
-        if ($roleUuid) {
-            $tracker->where('role_uuid', $roleUuid);
+        if ($roleName) {
+            $tracker->where('role_name', $roleName);
         }
         $tracker = $tracker->first();
 
@@ -73,7 +73,7 @@ class UserJourneyCommand extends Command
             ['Metric', 'Value'],
             [
                 ['User UUID', substr($tracker->user_uuid, 0, 20) . '...'],
-                ['Role UUID', $tracker->role_uuid ? substr($tracker->role_uuid, 0, 20) . '...' : 'N/A'],
+                ['Role Name', $tracker->role_name ? substr($tracker->role_name, 0, 20) . '...' : 'N/A'],
                 ['Total Requests', $tracker->access_count],
                 ['First Access', $tracker->first_access->format('H:i:s')],
                 ['Last Access', $tracker->last_access->format('H:i:s')],
@@ -158,12 +158,12 @@ class UserJourneyCommand extends Command
         return Command::SUCCESS;
     }
     
-    protected function showGeneralJourney($date, $roleUuid, $module)
+    protected function showGeneralJourney($date, $roleName, $module)
     {
         $this->info("🗺️  General User Journey Report");
         $this->info("📅 Date: {$date}");
-        if ($roleUuid) {
-            $this->info("🎭 Role Filter: {$roleUuid}");
+        if ($roleName) {
+            $this->info("🎭 Role Filter: {$roleName}");
         } else {
             $this->comment("📋 All roles");
         }
@@ -174,8 +174,8 @@ class UserJourneyCommand extends Command
 
         // Get all trackers for the date
         $trackersQuery = RequestTracker::forDate($date);
-        if ($roleUuid) {
-            $trackersQuery->where('role_uuid', $roleUuid);
+        if ($roleName) {
+            $trackersQuery->where('role_name', $roleName);
         }
         
         $trackers = $trackersQuery->get();
@@ -192,7 +192,7 @@ class UserJourneyCommand extends Command
             [
                 ['Total Users', $trackers->unique('user_uuid')->count()],
                 ['Total Requests', $trackers->sum('access_count')],
-                ['Unique Roles', $trackers->whereNotNull('role_uuid')->unique('role_uuid')->count()],
+                ['Unique Roles', $trackers->whereNotNull('role_name')->unique('role_name')->count()],
                 ['Total Sessions', $trackers->whereNotNull('user_session_uuid')->unique('user_session_uuid')->count()],
             ]
         );
@@ -259,15 +259,15 @@ class UserJourneyCommand extends Command
         );
 
         // Role breakdown if not filtered by role
-        if (!$roleUuid) {
+        if (!$roleName) {
             $this->newLine();
             $this->line('🎭 Activity by Role:');
             
-            $roleStats = $trackers->whereNotNull('role_uuid')
-                ->groupBy('role_uuid')
-                ->map(function ($items, $roleUuid) {
+            $roleStats = $trackers->whereNotNull('role_name')
+                ->groupBy('role_name')
+                ->map(function ($items, $roleName) {
                     return [
-                        'role_uuid' => $roleUuid,
+                        'role_name' => $roleName,
                         'users' => $items->unique('user_uuid')->count(),
                         'requests' => $items->sum('access_count'),
                     ];
@@ -276,10 +276,10 @@ class UserJourneyCommand extends Command
                 ->values();
 
             $this->table(
-                ['Role UUID', 'Unique Users', 'Total Requests'],
+                ['Role Name', 'Unique Users', 'Total Requests'],
                 $roleStats->map(function ($stat) {
                     return [
-                        substr($stat['role_uuid'], 0, 20) . '...',
+                        substr($stat['role_name'], 0, 20) . '...',
                         $stat['users'],
                         $stat['requests'],
                     ];

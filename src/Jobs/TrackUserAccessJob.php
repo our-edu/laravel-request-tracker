@@ -222,10 +222,16 @@ class TrackUserAccessJob implements ShouldQueue
             if (!empty($trackModuleAttributes)) {
                 $moduleAttr = $trackModuleAttributes[0]->newInstance();
                 
+                // Extract the last segment from route name (e.g., 'list' from 'api.subject.certificate_manager.list')
+                $action = $this->routeName ?? $method ?? 'unknown';
+                if (str_contains($action, '.')) {
+                    $action = substr($action, strrpos($action, '.') + 1);
+                }
+                
                 $trackingData = [
                     'module' => $moduleAttr->module,
                     'submodule' => $moduleAttr->submodule,
-                    'action' => $this->routeName ?? $method ?? 'unknown',
+                    'action' => $action,
                 ];
                 
                 logger()->info('[Request Tracker Job] TrackModule attribute found', $trackingData);
