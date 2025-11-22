@@ -136,6 +136,12 @@ class TrackUserAccessJob implements ShouldQueue
 
     protected function trackEndpointDetails($tracker)
     {
+        logger()->info('[Request Tracker Job] === trackEndpointDetails CALLED ===', [
+            'tracker_uuid' => $tracker->uuid,
+            'controller_action' => $this->controllerAction,
+            'route_name' => $this->routeName,
+        ]);
+        
         // Extract tracking data from controller attribute
         $trackingData = $this->extractTrackingData();
         
