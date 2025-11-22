@@ -13,8 +13,7 @@ return new class extends Migration {
     public function up()
     {
         Schema::create('user_access_details', function (Blueprint $table) {
-            $table->id();
-            $table->uuid('uuid')->unique();
+            $table->uuid('uuid')->primary();
             
             // Link to daily summary (request_trackers)
             $table->uuid('tracker_uuid')->index()->comment('Foreign key to request_trackers.uuid');
@@ -44,8 +43,8 @@ return new class extends Migration {
             
             $table->timestamps();
             
-            // Indexes for efficient queries
-            $table->unique(['user_uuid', 'role_uuid', 'endpoint', 'date'], 'unique_user_endpoint_date');
+            // Indexes for efficient queries (removed unique constraint to allow multiple visits per day)
+            $table->index(['user_uuid', 'role_uuid', 'endpoint', 'date'], 'idx_user_endpoint_date');
             $table->index(['tracker_uuid', 'module']);
             $table->index(['user_uuid', 'date', 'module']);
             $table->index(['module', 'submodule', 'date']);
