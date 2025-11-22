@@ -13,23 +13,23 @@ use OurEdu\RequestTracker\Services\ModuleExtractor;
 class EventsSubscriber
 {
     /**
-     * Called when a route is matched. Find or create the single tracker
-     * for this (user|guest) + path combination and attach uuid to the request.
+     * Called after request is fully handled (after middleware including auth).
+     * Track the request and update database.
      */
-    public function handleRouteMatched(RouteMatched $event)
+    public function handleRequestHandled(RequestHandled $event)
     {
         try {
-            $this->doHandleRouteMatched($event);
+            $this->doHandleRequestHandled($event);
         } catch (\Throwable $e) {
             // Silent fail - log error but don't break the application
-            $this->logError('handleRouteMatched', $e);
+            $this->logError('handleRequestHandled', $e);
         }
     }
     
     /**
-     * Internal route matched handler with tracking logic
+     * Internal request handler with tracking logic
      */
-    protected function doHandleRouteMatched(RouteMatched $event)
+    protected function doHandleRequestHandled(RequestHandled $event)
     {
         $request = $event->request;
         $config  = config('request-tracker', []);
@@ -86,13 +86,32 @@ class EventsSubscriber
         // Only track authenticated users
         $user = null;
         try {
-            $user = $request->user();
+            // Try configured guards
+            $guards = $config['auth_guards'] ?? ['web', 'api'];
+            logger()->info('[Request Tracker] Checking authentication guards', ['guards' => $guards]);
+            
+            foreach ($guards as $guard) {
+                $user = auth($guard)->user();
+                if ($user) {
+                    logger()->info('[Request Tracker] User found via guard', ['guard' => $guard]);
+                    break;
+                }
+            }
+            
+            // Fallback to request->user()
+            if (!$user) {
+                $user = $request->user();
+            }
         } catch (\Throwable $e) {
+            logger()->warning('[Request Tracker] Error checking authentication', ['error' => $e->getMessage()]);
             $user = null;
         }
 
         if (!$user || is_null($user) || is_null($user->getAuthIdentifier())) {
-            logger()->info('[Request Tracker] No authenticated user found');
+            logger()->info('[Request Tracker] No authenticated user found', [
+                'has_bearer_token' => !empty($request->bearerToken()),
+                'has_authorization_header' => $request->hasHeader('Authorization'),
+            ]);
             return;
         }
 
@@ -187,13 +206,6 @@ class EventsSubscriber
 
         // Track the specific endpoint visited
         $this->trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config);
-
-        // Attach tracker uuid to request
-        if ($tracker) {
-            $request->attributes->set('request_tracker_uuid', $tracker->uuid);
-            $request->attributes->set('request_user_uuid', $userId);
-            $request->attributes->set('request_role_uuid', $roleUuid);
-        }
     }
 
     /**
@@ -239,43 +251,6 @@ class EventsSubscriber
                 'last_visit'        => now(),
             ]);
         }
-    }
-
-    /**
-     * Called after the response. Update last access time.
-     */
-    public function handleRequestHandled(RequestHandled $event)
-    {
-        try {
-            $this->doHandleRequestHandled($event);
-        } catch (\Throwable $e) {
-            // Silent fail - log error but don't break the application
-            $this->logError('handleRequestHandled', $e);
-        }
-    }
-    
-    /**
-     * Internal request handled handler
-     */
-    protected function doHandleRequestHandled(RequestHandled $event)
-    {
-        $request  = $event->request;
-        $response = $event->response;
-
-        $uuid = $request->attributes->get('request_tracker_uuid');
-        if (!$uuid) {
-            return;
-        }
-
-        $tracker = RequestTracker::where('uuid', $uuid)->first();
-        if (!$tracker) {
-            return;
-        }
-
-        // Update last access
-        $tracker->update([
-            'last_access' => now(),
-        ]);
     }
 
     /**
@@ -365,11 +340,6 @@ class EventsSubscriber
 
     public function subscribe($events)
     {
-        $events->listen(
-            \Illuminate\Routing\Events\RouteMatched::class,
-            [EventsSubscriber::class, 'handleRouteMatched']
-        );
-
         $events->listen(
             \Illuminate\Foundation\Http\Events\RequestHandled::class,
             [EventsSubscriber::class, 'handleRequestHandled']
