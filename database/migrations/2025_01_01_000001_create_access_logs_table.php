@@ -13,7 +13,9 @@ return new class extends Migration {
     public function up()
     {
         Schema::create('user_access_details', function (Blueprint $table) {
-            $table->uuid('uuid')->unique();            
+            $table->id();
+            $table->uuid('uuid')->unique();
+            
             // Link to daily summary (request_trackers)
             $table->uuid('tracker_uuid')->index()->comment('Foreign key to request_trackers.uuid');
             
