@@ -209,7 +209,7 @@ class EventsSubscriber
     }
 
     /**
-     * Track the specific endpoint/module visited
+     * Track the specific endpoint/module visited - creates NEW record per day
      */
     protected function trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config)
     {
@@ -218,39 +218,25 @@ class EventsSubscriber
         // Extract module, submodule, and annotation
         $extracted = ModuleExtractor::extract($endpoint, $routeName, $controllerAction, $config);
         
-        // Check if this endpoint was already visited today by this user+role
-        $existingDetail = UserAccessDetail::where('user_uuid', $tracker->user_uuid)
-            ->where('role_uuid', $tracker->role_uuid)
-            ->where('endpoint', $endpoint)
-            ->where('date', $today)
-            ->first();
-
-        if ($existingDetail) {
-            // Increment visit count for this endpoint
-            $existingDetail->increment('visit_count');
-            $existingDetail->update([
-                'last_visit' => now(),
-            ]);
-        } else {
-            // Create new endpoint visit record
-            UserAccessDetail::create([
-                'uuid'              => (string) Str::uuid(),
-                'tracker_uuid'      => $tracker->uuid,
-                'user_uuid'         => $tracker->user_uuid,
-                'role_uuid'         => $tracker->role_uuid,
-                'date'              => $today,
-                'method'            => $request->method(),
-                'endpoint'          => $endpoint,
-                'route_name'        => $routeName,
-                'controller_action' => $controllerAction,
-                'module'            => $extracted['module'],
-                'submodule'         => $extracted['submodule'],
-                'annotation'        => $extracted['annotation'],
-                'visit_count'       => 1,
-                'first_visit'       => now(),
-                'last_visit'        => now(),
-            ]);
-        }
+        // Always create a new record for each access (daily log)
+        // This way you get a complete log of all visits per day
+        \OurEdu\RequestTracker\Models\UserAccessDetail::create([
+            'uuid'              => (string) Str::uuid(),
+            'tracker_uuid'      => $tracker->uuid,
+            'user_uuid'         => $tracker->user_uuid,
+            'role_uuid'         => $tracker->role_uuid,
+            'date'              => $today,
+            'method'            => $request->method(),
+            'endpoint'          => $endpoint,
+            'route_name'        => $routeName,
+            'controller_action' => $controllerAction,
+            'module'            => $extracted['module'],
+            'submodule'         => $extracted['submodule'],
+            'annotation'        => $extracted['annotation'],
+            'visit_count'       => 1,
+            'first_visit'       => now(),
+            'last_visit'        => now(),
+        ]);
     }
 
     /**
