@@ -20,7 +20,7 @@ class UserAccessDetail extends Model
         'controller_action',
         'module',
         'submodule',
-        'annotation',
+        'action',
         'visit_count',
         'first_visit',
         'last_visit',

@@ -32,7 +32,7 @@ return new class extends Migration {
             // Module organization - التنظيم بتاع الموديولات
             $table->string('module')->nullable()->index()->comment('Main module: users, orders, students');
             $table->string('submodule')->nullable()->index()->comment('Sub-module: profile, grades, attendance');
-            $table->text('annotation')->nullable()->comment('Human-readable: "Student Grades Management"');
+            $table->string('action')->nullable()->comment('Action description: "List", "Create", "Update", "Delete"');
             
             // Visit tracking - عدد مرات زيارة نفس الendpoint في نفس اليوم
             $table->integer('visit_count')->default(1)->comment('Number of times visited this endpoint today');

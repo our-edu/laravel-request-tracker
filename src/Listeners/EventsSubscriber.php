@@ -214,6 +214,7 @@ class EventsSubscriber
 
     /**
      * Track endpoint only if controller method has #[TrackRequest] attribute
+     * or route attribute with 'request_track' parameter
      */
     protected function trackEndpointIfAnnotated($tracker, $request, $routeName, $controllerAction, $today, $config)
     {
@@ -235,32 +236,114 @@ class EventsSubscriber
             return;
         }
 
-        // Check for #[TrackRequest] attribute using reflection
+        // Check for tracking data
         try {
             $reflectionMethod = new \ReflectionMethod($controller, $method);
-            $attributes = $reflectionMethod->getAttributes(\OurEdu\RequestTracker\Attributes\TrackRequest::class);
             
-            if (empty($attributes)) {
-                // No attribute found, don't track endpoint details
-                logger()->info('[Request Tracker] No #[TrackRequest] attribute found, skipping endpoint tracking', [
+            // Method 1: Check for #[TrackRequest] attribute (standalone)
+            $trackRequestAttributes = $reflectionMethod->getAttributes(\OurEdu\RequestTracker\Attributes\TrackRequest::class);
+            
+            if (!empty($trackRequestAttributes)) {
+                // Found #[TrackRequest] attribute
+                logger()->info('[Request Tracker] #[TrackRequest] attribute found, tracking endpoint', [
                     'controller' => $controller,
                     'method' => $method,
                 ]);
+                
+                $this->trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config);
                 return;
             }
             
-            // Attribute found, proceed with tracking
-            logger()->info('[Request Tracker] #[TrackRequest] attribute found, tracking endpoint', [
+            // Method 2: Check for 'request_track' in any route attribute (Get, Post, etc.)
+            $allAttributes = $reflectionMethod->getAttributes();
+            
+            foreach ($allAttributes as $attribute) {
+                $attributeInstance = $attribute->newInstance();
+                
+                // Check if attribute has request_track property/parameter
+                if (property_exists($attributeInstance, 'request_track') && !empty($attributeInstance->request_track)) {
+                    logger()->info('[Request Tracker] Found request_track in route attribute, tracking endpoint', [
+                        'controller' => $controller,
+                        'method' => $method,
+                        'attribute' => $attribute->getName(),
+                    ]);
+                    
+                    // Pass the request_track data to tracking
+                    $this->trackEndpointWithCustomData($tracker, $request, $routeName, $controllerAction, $today, $config, $attributeInstance->request_track);
+                    return;
+                }
+                
+                // Also check constructor arguments (for older attribute formats)
+                $args = $attribute->getArguments();
+                if (isset($args['request_track']) && !empty($args['request_track'])) {
+                    logger()->info('[Request Tracker] Found request_track in route attribute arguments, tracking endpoint', [
+                        'controller' => $controller,
+                        'method' => $method,
+                        'attribute' => $attribute->getName(),
+                    ]);
+                    
+                    $this->trackEndpointWithCustomData($tracker, $request, $routeName, $controllerAction, $today, $config, $args['request_track']);
+                    return;
+                }
+            }
+            
+            // No tracking attribute found
+            logger()->info('[Request Tracker] No tracking attribute found, skipping endpoint tracking', [
                 'controller' => $controller,
                 'method' => $method,
             ]);
-            
-            $this->trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config);
             
         } catch (\ReflectionException $e) {
             logger()->warning('[Request Tracker] Reflection error', ['error' => $e->getMessage()]);
             return;
         }
+    }
+
+    /**
+     * Track endpoint with custom data from request_track parameter
+     */
+    protected function trackEndpointWithCustomData($tracker, $request, $routeName, $controllerAction, $today, $config, $trackData)
+    {
+        $endpoint = $request->path();
+        
+        // Parse track data: can be array or string
+        $module = null;
+        $submodule = null;
+        $action = null;
+        
+        if (is_array($trackData)) {
+            $module = $trackData['module'] ?? $trackData[0] ?? null;
+            $submodule = $trackData['submodule'] ?? $trackData[1] ?? null;
+            $action = $trackData['action'] ?? $trackData[2] ?? null;
+        } elseif (is_string($trackData)) {
+            // Parse 'module.submodule|Action' format
+            $parts = explode('|', $trackData);
+            $modulePath = $parts[0];
+            $action = $parts[1] ?? null;
+            
+            $moduleParts = explode('.', $modulePath);
+            $module = $moduleParts[0] ?? null;
+            $submodule = $moduleParts[1] ?? null;
+        }
+        
+        // Create access detail record
+        \OurEdu\RequestTracker\Models\UserAccessDetail::create([
+            'uuid'              => (string) Str::uuid(),
+            'tracker_uuid'      => $tracker->uuid,
+            'user_uuid'         => $tracker->user_uuid,
+            'role_uuid'         => $tracker->role_uuid,
+            'date'              => $today,
+            'method'            => $request->method(),
+            'endpoint'          => $endpoint,
+            'route_name'        => $routeName,
+            'controller_action' => $controllerAction,
+            'module'            => $module,
+            'submodule'         => $submodule,
+            'action'            => $action,
+            'visit_count'       => 1,
+            'first_visit'       => now(),
+            'last_visit'        => now(),
+        ]);
     }
 
     /**
@@ -270,7 +353,7 @@ class EventsSubscriber
     {
         $endpoint = $request->path();
         
-        // Extract module, submodule, and annotation
+        // Extract module, submodule, and action
         $extracted = ModuleExtractor::extract($endpoint, $routeName, $controllerAction, $config);
         
         // Always create a new record for each access (daily log)
@@ -287,7 +370,7 @@ class EventsSubscriber
             'controller_action' => $controllerAction,
             'module'            => $extracted['module'],
             'submodule'         => $extracted['submodule'],
-            'annotation'        => $extracted['annotation'],
+            'action'            => $extracted['annotation'],
             'visit_count'       => 1,
             'first_visit'       => now(),
             'last_visit'        => now(),
