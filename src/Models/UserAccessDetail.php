@@ -8,6 +8,12 @@ class UserAccessDetail extends Model
 {
     protected $table = 'user_access_details';
     
+    protected $primaryKey = 'uuid';
+    
+    public $incrementing = false;
+    
+    protected $keyType = 'string';
+    
     protected $fillable = [
         'uuid',
         'tracker_uuid',
