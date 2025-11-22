@@ -2,7 +2,6 @@
 
 namespace OurEdu\RequestTracker;
 
-use Couchbase\RequestTracer;
 use Illuminate\Support\ServiceProvider;
 use OurEdu\RequestTracker\Listeners\EventsSubscriber;
 use OurEdu\RequestTracker\Services\RequestTrackerService;

@@ -1,15 +1,16 @@
 <?php
 
-namespace Ouredu\UserLastAccess\Tests;
+namespace OurEdu\RequestTracker\Tests;
 
 use Orchestra\Testbench\TestCase as BaseTestCase;
+use OurEdu\RequestTracker\RequestTrackerServiceProvider;
 
 abstract class TestCase extends BaseTestCase
 {
     protected function getPackageProviders($app)
     {
         return [
-         //   LastAccessServiceProvider::class,
+            RequestTrackerServiceProvider::class,
         ];
     }
 

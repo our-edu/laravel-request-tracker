@@ -3,6 +3,9 @@
 return [
     // Enable or disable tracking
     'enabled' => env('REQUEST_TRACKER_ENABLED', false),
+    
+    // Silent error handling - prevent package errors from breaking your application
+    'silent_errors' => env('REQUEST_TRACKER_SILENT_ERRORS', true),
 
     // Paths to exclude from tracking
     'exclude' => [

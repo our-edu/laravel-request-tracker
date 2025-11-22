@@ -18,6 +18,19 @@ class EventsSubscriber
      */
     public function handleRouteMatched(RouteMatched $event)
     {
+        try {
+            $this->doHandleRouteMatched($event);
+        } catch (\Throwable $e) {
+            // Silent fail - log error but don't break the application
+            $this->logError('handleRouteMatched', $e);
+        }
+    }
+    
+    /**
+     * Internal route matched handler with tracking logic
+     */
+    protected function doHandleRouteMatched(RouteMatched $event)
+    {
         $request = $event->request;
         $config  = config('request-tracker', []);
 
@@ -204,6 +217,19 @@ class EventsSubscriber
      */
     public function handleRequestHandled(RequestHandled $event)
     {
+        try {
+            $this->doHandleRequestHandled($event);
+        } catch (\Throwable $e) {
+            // Silent fail - log error but don't break the application
+            $this->logError('handleRequestHandled', $e);
+        }
+    }
+    
+    /**
+     * Internal request handled handler
+     */
+    protected function doHandleRequestHandled(RequestHandled $event)
+    {
         $request  = $event->request;
         $response = $event->response;
 
@@ -283,6 +309,29 @@ class EventsSubscriber
             'browser' => $browser,
             'platform' => $platform,
         ];
+    }
+
+    /**
+     * Log errors silently without breaking the application
+     */
+    protected function logError(string $method, \Throwable $e): void
+    {
+        $config = config('request-tracker', []);
+        $silentErrors = $config['silent_errors'] ?? true;
+        
+        if ($silentErrors) {
+            // Log to Laravel log file
+            if (function_exists('logger')) {
+                logger()->warning("[Request Tracker] Error in {$method}: " . $e->getMessage(), [
+                    'exception' => get_class($e),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                ]);
+            }
+        } else {
+            // Re-throw if silent errors disabled
+            throw $e;
+        }
     }
 
     public function subscribe($events)
