@@ -16,7 +16,7 @@ class RequestTracker extends Model
         'uuid',
         'user_uuid',
         'role_uuid',
-        'application',
+        'role_name',
         'date',
         'access_count',
         'first_access',

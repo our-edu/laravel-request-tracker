@@ -13,6 +13,7 @@ class UserAccessDetail extends Model
         'tracker_uuid',
         'user_uuid',
         'role_uuid',
+        'role_name',
         'date',
         'method',
         'endpoint',

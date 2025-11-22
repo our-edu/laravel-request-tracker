@@ -1,6 +1,6 @@
 {
     "name": "our-education/laravel-request-tracker",
-    "description": "Track incoming request lifecycle events and persist traces to the database (auto-discoverable Laravel package).",
+    "description": "Event-driven Laravel package for tracking user access patterns with daily summaries, detailed journeys, and module-level analytics",
     "type": "library",
     "license": "MIT",
     "keywords": ["laravel", "request", "tracker", "http", "logging", "middleware"],

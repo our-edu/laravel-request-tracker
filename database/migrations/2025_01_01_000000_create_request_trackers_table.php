@@ -16,7 +16,7 @@ return new class extends Migration {
             $table->uuid('uuid')->primary();
             $table->uuid('user_uuid')->index();
             $table->uuid('role_uuid')->nullable()->index();
-            $table->string('application')->nullable()->comment('اسم التطبيق');
+            $table->string('role_name')->nullable()->index()->comment('Role name for easier filtering');
             $table->date('date')->index();
             
             // Access tracking - ملخص النشاط اليومي

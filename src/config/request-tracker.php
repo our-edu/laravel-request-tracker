@@ -72,17 +72,5 @@ return [
         'auto_extract' => true,
         'auto_extract_segment' => 2, // 0-based index of path segment (after api/v1)
     ],
-
-    // Performance
-    'performance' => [
-        // Queue the database writes (requires queue worker)
-        'use_queue' => env('REQUEST_TRACKER_USE_QUEUE', false),
-        
-        // Queue connection to use
-        'queue_connection' => env('REQUEST_TRACKER_QUEUE_CONNECTION', 'default'),
-        
-        // Queue name
-        'queue_name' => 'tracker',
-    ],
 ];
 

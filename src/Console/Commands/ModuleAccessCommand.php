@@ -12,28 +12,35 @@ class ModuleAccessCommand extends Command
                             {module : The module name to search for}
                             {--from= : Start date (Y-m-d)}
                             {--to= : End date (Y-m-d)}
-                            {--role= : Filter by specific role UUID}
+                            {--role= : Filter by specific role UUID (optional)}
                             {--submodule= : Filter by specific submodule}
                             {--limit=20 : Number of users to display}';
 
-    protected $description = 'Show users who accessed a specific module within a date range';
+    protected $description = 'Show users who accessed a specific module within a date range (general or filtered by role)';
 
     public function handle()
     {
         $module = $this->argument('module');
         $from = $this->option('from') ?? Carbon::now()->subWeek()->format('Y-m-d');
         $to = $this->option('to') ?? Carbon::now()->format('Y-m-d');
-        $role = $this->option('role');
         $submodule = $this->option('submodule');
         $limit = $this->option('limit');
+        
+        // Interactive role selection
+        $role = $this->option('role');
+        if (!$role && $this->confirm('Do you want to filter by a specific role?', false)) {
+            $role = $this->ask('Enter the role UUID');
+        }
 
-        $this->info("Module Access Report: {$module}");
-        $this->info("Date Range: {$from} to {$to}");
+        $this->info("📊 Module Access Report: {$module}");
+        $this->info("📅 Date Range: {$from} to {$to}");
         if ($role) {
-            $this->info("Role Filter: {$role}");
+            $this->info("🎭 Role Filter: {$role}");
+        } else {
+            $this->comment("📋 General report (all roles)");
         }
         if ($submodule) {
-            $this->info("Submodule Filter: {$submodule}");
+            $this->info("📁 Submodule Filter: {$submodule}");
         }
         $this->newLine();
 

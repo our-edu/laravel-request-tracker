@@ -3,28 +3,56 @@
 namespace OurEdu\RequestTracker\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use OurEdu\RequestTracker\Models\RequestTracker;
 use OurEdu\RequestTracker\Models\UserAccessDetail;
 
 class UserJourneyCommand extends Command
 {
     protected $signature = 'tracker:user-journey 
-                            {user_uuid : The user UUID to track}
+                            {national_id? : The user national ID to track (optional for general report)}
                             {--date= : Specific date (Y-m-d format)}
                             {--role= : Filter by role UUID}
-                            {--module= : Filter by module name}';
+                            {--module= : Filter by module name}
+                            {--limit=50 : Number of journeys to show for general report}';
 
-    protected $description = 'View detailed user journey - what endpoints and modules a user visited';
+    protected $description = 'View detailed user journey by national ID - what endpoints and modules users visited (general or filtered by role)';
 
     public function handle()
     {
-        $userUuid = $this->argument('user_uuid');
+        $nationalId = $this->argument('national_id');
         $date = $this->option('date') ?? now()->format('Y-m-d');
-        $roleUuid = $this->option('role');
         $module = $this->option('module');
+        
+        // Interactive role selection
+        $roleUuid = $this->option('role');
+        if (!$roleUuid && $this->confirm('Do you want to filter by a specific role?', false)) {
+            $roleUuid = $this->ask('Enter the role UUID');
+        }
+        
+        if ($nationalId) {
+            // Resolve user UUID from national ID
+            $user = DB::table('users')->where('national_id', $nationalId)->first();
+            if (!$user) {
+                $this->error("User not found with national ID: {$nationalId}");
+                return Command::FAILURE;
+            }
+            return $this->showUserJourney($user->uuid, $nationalId, $date, $roleUuid, $module);
+        } else {
+            return $this->showGeneralJourney($date, $roleUuid, $module);
+        }
+    }
+    
+    protected function showUserJourney($userUuid, $nationalId, $date, $roleUuid, $module)
+    {
 
-        $this->info("🗺️  User Journey for: {$userUuid}");
+        $this->info("🗺️  User Journey for National ID: {$nationalId}");
         $this->info("📅 Date: {$date}");
+        if ($roleUuid) {
+            $this->info("🎭 Role Filter: {$roleUuid}");
+        } else {
+            $this->comment("📋 All roles");
+        }
         $this->newLine();
 
         // Get daily summary
@@ -49,7 +77,6 @@ class UserJourneyCommand extends Command
                 ['Total Requests', $tracker->access_count],
                 ['First Access', $tracker->first_access->format('H:i:s')],
                 ['Last Access', $tracker->last_access->format('H:i:s')],
-                ['Application', $tracker->application ?? 'N/A'],
             ]
         );
 
@@ -91,7 +118,7 @@ class UserJourneyCommand extends Command
         // Detailed endpoint list
         $this->line('📍 Detailed Endpoint Visits:');
         $this->table(
-            ['Time', 'Module', 'Submodule', 'Endpoint', 'Visits', 'Annotation'],
+            ['Time', 'Module', 'Submodule', 'Endpoint', 'Visits', 'Action'],
             $details->map(function ($detail) {
                 return [
                     $detail->first_visit->format('H:i:s'),
@@ -99,7 +126,7 @@ class UserJourneyCommand extends Command
                     $detail->submodule ?? '-',
                     strlen($detail->endpoint) > 40 ? substr($detail->endpoint, 0, 37) . '...' : $detail->endpoint,
                     $detail->visit_count,
-                    $detail->annotation ?? '-',
+                    $detail->action ?? '-',
                 ];
             })->toArray()
         );
@@ -126,6 +153,138 @@ class UserJourneyCommand extends Command
                     })->toArray()
                 );
             }
+        }
+
+        return Command::SUCCESS;
+    }
+    
+    protected function showGeneralJourney($date, $roleUuid, $module)
+    {
+        $this->info("🗺️  General User Journey Report");
+        $this->info("📅 Date: {$date}");
+        if ($roleUuid) {
+            $this->info("🎭 Role Filter: {$roleUuid}");
+        } else {
+            $this->comment("📋 All roles");
+        }
+        if ($module) {
+            $this->info("📦 Module Filter: {$module}");
+        }
+        $this->newLine();
+
+        // Get all trackers for the date
+        $trackersQuery = RequestTracker::forDate($date);
+        if ($roleUuid) {
+            $trackersQuery->where('role_uuid', $roleUuid);
+        }
+        
+        $trackers = $trackersQuery->get();
+
+        if ($trackers->isEmpty()) {
+            $this->warn('No activity found for this date.');
+            return Command::FAILURE;
+        }
+
+        // Summary statistics
+        $this->line('📊 General Summary:');
+        $this->table(
+            ['Metric', 'Value'],
+            [
+                ['Total Users', $trackers->unique('user_uuid')->count()],
+                ['Total Requests', $trackers->sum('access_count')],
+                ['Unique Roles', $trackers->whereNotNull('role_uuid')->unique('role_uuid')->count()],
+                ['Total Sessions', $trackers->whereNotNull('user_session_uuid')->unique('user_session_uuid')->count()],
+            ]
+        );
+
+        $this->newLine();
+
+        // Get detailed access information
+        $detailsQuery = UserAccessDetail::whereIn('tracker_uuid', $trackers->pluck('uuid'));
+        if ($module) {
+            $detailsQuery->where('module', $module);
+        }
+        $details = $detailsQuery->get();
+
+        if ($details->isEmpty()) {
+            $this->warn('No detailed endpoint visits found.');
+            return Command::SUCCESS;
+        }
+
+        // Module usage statistics
+        $this->line('📦 Module Usage:');
+        $moduleStats = $details->groupBy('module')->map(function ($items, $module) {
+            return [
+                'module' => $module ?? 'Unknown',
+                'unique_users' => $items->unique('user_uuid')->count(),
+                'total_visits' => $items->sum('visit_count'),
+                'unique_endpoints' => $items->count(),
+            ];
+        })->sortByDesc('total_visits')->values();
+
+        $this->table(
+            ['Module', 'Unique Users', 'Total Visits', 'Unique Endpoints'],
+            $moduleStats->map(function ($stat) {
+                return [
+                    $stat['module'],
+                    $stat['unique_users'],
+                    $stat['total_visits'],
+                    $stat['unique_endpoints'],
+                ];
+            })->toArray()
+        );
+
+        $this->newLine();
+
+        // Top accessed endpoints
+        $this->line('🔥 Top 10 Most Accessed Endpoints:');
+        $topEndpoints = $details->sortByDesc('visit_count')->take(10);
+        
+        $this->table(
+            ['Module', 'Submodule', 'Endpoint', 'Total Visits', 'Unique Users'],
+            $topEndpoints->map(function ($detail) use ($details) {
+                $usersCount = $details->where('endpoint', $detail->endpoint)
+                    ->where('module', $detail->module)
+                    ->unique('user_uuid')
+                    ->count();
+                    
+                return [
+                    $detail->module ?? 'N/A',
+                    $detail->submodule ?? '-',
+                    strlen($detail->endpoint) > 35 ? substr($detail->endpoint, 0, 32) . '...' : $detail->endpoint,
+                    $detail->visit_count,
+                    $usersCount,
+                ];
+            })->toArray()
+        );
+
+        // Role breakdown if not filtered by role
+        if (!$roleUuid) {
+            $this->newLine();
+            $this->line('🎭 Activity by Role:');
+            
+            $roleStats = $trackers->whereNotNull('role_uuid')
+                ->groupBy('role_uuid')
+                ->map(function ($items, $roleUuid) {
+                    return [
+                        'role_uuid' => $roleUuid,
+                        'users' => $items->unique('user_uuid')->count(),
+                        'requests' => $items->sum('access_count'),
+                    ];
+                })
+                ->sortByDesc('requests')
+                ->values();
+
+            $this->table(
+                ['Role UUID', 'Unique Users', 'Total Requests'],
+                $roleStats->map(function ($stat) {
+                    return [
+                        substr($stat['role_uuid'], 0, 20) . '...',
+                        $stat['users'],
+                        $stat['requests'],
+                    ];
+                })->toArray()
+            );
         }
 
         return Command::SUCCESS;

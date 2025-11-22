@@ -3,43 +3,65 @@
 namespace OurEdu\RequestTracker\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use OurEdu\RequestTracker\Models\RequestTracker;
-use OurEdu\RequestTracker\Models\AccessLog;
 
 class UserAccessStatsCommand extends Command
 {
     protected $signature = 'tracker:user-stats 
-                            {user_uuid? : The user UUID to get stats for}
+                            {national_id? : The user national ID to get stats for}
                             {--date= : Specific date (Y-m-d format)}
                             {--from= : Start date for range (Y-m-d format)}
                             {--to= : End date for range (Y-m-d format)}
+                            {--role= : Filter by specific role UUID (optional)}
                             {--top=10 : Number of top results to show}';
 
-    protected $description = 'Display user access statistics';
+    protected $description = 'Display user access statistics by national ID (general or filtered by role)';
 
     public function handle()
     {
-        $userUuid = $this->argument('user_uuid');
+        $nationalId = $this->argument('national_id');
         $date = $this->option('date');
         $from = $this->option('from');
         $to = $this->option('to');
         $top = $this->option('top');
+        
+        // Interactive role selection
+        $roleUuid = $this->option('role');
+        if (!$roleUuid && $this->confirm('Do you want to filter by a specific role?', false)) {
+            $roleUuid = $this->ask('Enter the role UUID');
+        }
 
-        if ($userUuid) {
-            $this->showUserStats($userUuid, $date, $from, $to);
+        if ($nationalId) {
+            // Resolve user UUID from national ID
+            $user = DB::table('users')->where('national_id', $nationalId)->first();
+            if (!$user) {
+                $this->error("User not found with national ID: {$nationalId}");
+                return Command::FAILURE;
+            }
+            $this->showUserStats($user->uuid, $nationalId, $date, $from, $to, $roleUuid);
         } else {
-            $this->showOverallStats($date, $from, $to, $top);
+            $this->showOverallStats($date, $from, $to, $top, $roleUuid);
         }
 
         return Command::SUCCESS;
     }
 
-    protected function showUserStats($userUuid, $date, $from, $to)
+    protected function showUserStats($userUuid, $nationalId, $date, $from, $to, $roleUuid = null)
     {
-        $this->info("📊 Access Statistics for User: {$userUuid}");
+        $this->info("📊 Access Statistics for User (National ID: {$nationalId}):");
+        if ($roleUuid) {
+            $this->info("🎭 Role Filter: {$roleUuid}");
+        } else {
+            $this->comment("📋 Showing all roles (general report)");
+        }
         $this->newLine();
 
         $query = RequestTracker::forUser($userUuid);
+        
+        if ($roleUuid) {
+            $query->where('role_uuid', $roleUuid);
+        }
 
         if ($date) {
             $query->forDate($date);
@@ -87,12 +109,21 @@ class UserAccessStatsCommand extends Command
         );
     }
 
-    protected function showOverallStats($date, $from, $to, $top)
+    protected function showOverallStats($date, $from, $to, $top, $roleUuid = null)
     {
         $this->info("📊 Overall Access Statistics");
+        if ($roleUuid) {
+            $this->info("🎭 Role Filter: {$roleUuid}");
+        } else {
+            $this->comment("📋 General report (all roles)");
+        }
         $this->newLine();
 
         $query = RequestTracker::query();
+        
+        if ($roleUuid) {
+            $query->where('role_uuid', $roleUuid);
+        }
 
         if ($date) {
             $query->forDate($date);

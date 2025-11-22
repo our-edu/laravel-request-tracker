@@ -3,12 +3,9 @@
 namespace OurEdu\RequestTracker\Listeners;
 
 use Illuminate\Foundation\Http\Events\RequestHandled;
-use Illuminate\Routing\Events\RouteMatched;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
-use OurEdu\RequestTracker\Models\RequestTracker;
-use OurEdu\RequestTracker\Models\UserAccessDetail;
-use OurEdu\RequestTracker\Services\ModuleExtractor;
+use OurEdu\RequestTracker\Jobs\TrackUserAccessJob;
 
 class EventsSubscriber
 {
@@ -44,7 +41,6 @@ class EventsSubscriber
             'method' => $request->method(),
         ]);
         $method = $request->method();
-        $app    = env('APP_NAME');
 
         // normalize current path (no leading/trailing slash, lowercase for safe matching)
         $path = trim($request->path(), '/');           // e.g. "admission/api/v1/ar/parent/look-up"
@@ -141,8 +137,19 @@ class EventsSubscriber
             $roleUuid = $userSession->role_id;
             $userSessionUuid = $userSession->uuid ?? null;
             
+            // Get role name from role_translations table (locale: en)
+            $roleName = null;
+            if ($roleUuid) {
+                $roleTranslation = DB::table('role_translations')
+                    ->where('role_id', $roleUuid)
+                    ->where('locale', 'en')
+                    ->first();
+                $roleName = $roleTranslation ? $roleTranslation->display_name : null;
+            }
+            
             logger()->info('[Request Tracker] User session found', [
                 'role_uuid' => $roleUuid,
+                'role_name' => $roleName,
                 'session_uuid' => $userSessionUuid
             ]);
         }
@@ -162,219 +169,28 @@ class EventsSubscriber
         $ipAddress = $request->ip();
         $userAgent = $request->userAgent();
         $deviceInfo = $this->parseUserAgent($userAgent);
-
-        // Check if a record already exists for this user + role + date
-        $existingTracker = RequestTracker::where('user_uuid', $userId)
-            ->where('role_uuid', $roleUuid)
-            ->where('date', $today)
-            ->first();
-
-        // If record exists for today, increment access count
-        if ($existingTracker) {
-            $existingTracker->increment('access_count');
-            $existingTracker->update([
-                'last_access' => now(),
-            ]);
-            $tracker = $existingTracker;
-        } else {
-            // Create new tracker for this user + role + date
-            logger()->info('[Request Tracker] Creating new tracker record', [
-                'user_uuid' => $userId,
-                'role_uuid' => $roleUuid,
-                'date' => $today,
-            ]);
-            
-            $tracker = RequestTracker::create([
-                'uuid'              => (string) Str::uuid(),
-                'user_uuid'         => $userId,
-                'role_uuid'         => $roleUuid,
-                'user_session_uuid' => $userSessionUuid,
-                'application'       => $app,
-                'date'              => $today,
-                'access_count'      => 1,
-                'first_access'      => now(),
-                'last_access'       => now(),
-                'ip_address'        => $ipAddress,
-                'user_agent'        => $userAgent,
-                'device_type'       => $deviceInfo['device_type'],
-                'browser'           => $deviceInfo['browser'],
-                'platform'          => $deviceInfo['platform'],
-            ]);
-            
-            logger()->info('[Request Tracker] New tracker created successfully', ['tracker_uuid' => $tracker->uuid]);
-        }
-
-        // Only track endpoint details if using #[TrackRequest] attribute
-        // Check if route has the attribute
-        $route = $request->route();
-        if ($route && $route->getAction('controller')) {
-            $this->trackEndpointIfAnnotated($tracker, $request, $routeName, $controllerAction, $today, $config);
-        }
-    }
-
-    /**
-     * Track endpoint only if controller method has #[TrackRequest] attribute
-     * or route attribute with 'request_track' parameter
-     */
-    protected function trackEndpointIfAnnotated($tracker, $request, $routeName, $controllerAction, $today, $config)
-    {
-        $route = $request->route();
-        if (!$route) {
-            return;
-        }
-
-        // Get controller and method
-        $action = $route->getAction();
-        if (!isset($action['controller'])) {
-            return;
-        }
-
-        // Parse controller@method
-        [$controller, $method] = explode('@', $action['controller']);
         
-        if (!class_exists($controller) || !method_exists($controller, $method)) {
-            return;
-        }
-
-        // Check for tracking data
-        try {
-            $reflectionMethod = new \ReflectionMethod($controller, $method);
-            
-            // Method 1: Check for #[TrackRequest] attribute (standalone)
-            $trackRequestAttributes = $reflectionMethod->getAttributes(\OurEdu\RequestTracker\Attributes\TrackRequest::class);
-            
-            if (!empty($trackRequestAttributes)) {
-                // Found #[TrackRequest] attribute
-                logger()->info('[Request Tracker] #[TrackRequest] attribute found, tracking endpoint', [
-                    'controller' => $controller,
-                    'method' => $method,
-                ]);
-                
-                $this->trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config);
-                return;
-            }
-            
-            // Method 2: Check for 'request_track' in any route attribute (Get, Post, etc.)
-            $allAttributes = $reflectionMethod->getAttributes();
-            
-            foreach ($allAttributes as $attribute) {
-                $attributeInstance = $attribute->newInstance();
-                
-                // Check if attribute has request_track property/parameter
-                if (property_exists($attributeInstance, 'request_track') && !empty($attributeInstance->request_track)) {
-                    logger()->info('[Request Tracker] Found request_track in route attribute, tracking endpoint', [
-                        'controller' => $controller,
-                        'method' => $method,
-                        'attribute' => $attribute->getName(),
-                    ]);
-                    
-                    // Pass the request_track data to tracking
-                    $this->trackEndpointWithCustomData($tracker, $request, $routeName, $controllerAction, $today, $config, $attributeInstance->request_track);
-                    return;
-                }
-                
-                // Also check constructor arguments (for older attribute formats)
-                $args = $attribute->getArguments();
-                if (isset($args['request_track']) && !empty($args['request_track'])) {
-                    logger()->info('[Request Tracker] Found request_track in route attribute arguments, tracking endpoint', [
-                        'controller' => $controller,
-                        'method' => $method,
-                        'attribute' => $attribute->getName(),
-                    ]);
-                    
-                    $this->trackEndpointWithCustomData($tracker, $request, $routeName, $controllerAction, $today, $config, $args['request_track']);
-                    return;
-                }
-            }
-            
-            // No tracking attribute found
-            logger()->info('[Request Tracker] No tracking attribute found, skipping endpoint tracking', [
-                'controller' => $controller,
-                'method' => $method,
-            ]);
-            
-        } catch (\ReflectionException $e) {
-            logger()->warning('[Request Tracker] Reflection error', ['error' => $e->getMessage()]);
-            return;
-        }
-    }
-
-    /**
-     * Track endpoint with custom data from request_track parameter
-     */
-    protected function trackEndpointWithCustomData($tracker, $request, $routeName, $controllerAction, $today, $config, $trackData)
-    {
-        $endpoint = $request->path();
-        
-        // Parse track data: can be array or string
-        $module = null;
-        $submodule = null;
-        $action = null;
-        
-        if (is_array($trackData)) {
-            $module = $trackData['module'] ?? $trackData[0] ?? null;
-            $submodule = $trackData['submodule'] ?? $trackData[1] ?? null;
-            $action = $trackData['action'] ?? $trackData[2] ?? null;
-        } elseif (is_string($trackData)) {
-            // Parse 'module.submodule|Action' format
-            $parts = explode('|', $trackData);
-            $modulePath = $parts[0];
-            $action = $parts[1] ?? null;
-            
-            $moduleParts = explode('.', $modulePath);
-            $module = $moduleParts[0] ?? null;
-            $submodule = $moduleParts[1] ?? null;
-        }
-        
-        // Create access detail record
-        \OurEdu\RequestTracker\Models\UserAccessDetail::create([
-            'uuid'              => (string) Str::uuid(),
-            'tracker_uuid'      => $tracker->uuid,
-            'user_uuid'         => $tracker->user_uuid,
-            'role_uuid'         => $tracker->role_uuid,
-            'date'              => $today,
-            'method'            => $request->method(),
-            'endpoint'          => $endpoint,
-            'route_name'        => $routeName,
-            'controller_action' => $controllerAction,
-            'module'            => $module,
-            'submodule'         => $submodule,
-            'action'            => $action,
-            'visit_count'       => 1,
-            'first_visit'       => now(),
-            'last_visit'        => now(),
+        // Dispatch tracking job to queue (always async)
+        logger()->info('[Request Tracker] Dispatching tracking job to queue', [
+            'user_uuid' => $userId,
+            'role_name' => $roleName ?? 'N/A',
         ]);
-    }
-
-    /**
-     * Track the specific endpoint/module visited - creates NEW record per day
-     */
-    protected function trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config)
-    {
-        $endpoint = $request->path();
         
-        // Extract module, submodule, and action
-        $extracted = ModuleExtractor::extract($endpoint, $routeName, $controllerAction, $config);
-        
-        // Always create a new record for each access (daily log)
-        // This way you get a complete log of all visits per day
-        \OurEdu\RequestTracker\Models\UserAccessDetail::create([
-            'uuid'              => (string) Str::uuid(),
-            'tracker_uuid'      => $tracker->uuid,
-            'user_uuid'         => $tracker->user_uuid,
-            'role_uuid'         => $tracker->role_uuid,
-            'date'              => $today,
-            'method'            => $request->method(),
-            'endpoint'          => $endpoint,
-            'route_name'        => $routeName,
-            'controller_action' => $controllerAction,
-            'module'            => $extracted['module'],
-            'submodule'         => $extracted['submodule'],
-            'action'            => $extracted['annotation'],
-            'visit_count'       => 1,
-            'first_visit'       => now(),
-            'last_visit'        => now(),
-        ]);
+        TrackUserAccessJob::dispatch(
+            $userId,
+            $roleUuid,
+            $roleName,
+            $userSessionUuid,
+            $today,
+            $routeName,
+            $controllerAction,
+            $ipAddress,
+            $userAgent,
+            $deviceInfo,
+            $request->method(),
+            $request->path(),
+            $config
+        );
     }
 
     /**

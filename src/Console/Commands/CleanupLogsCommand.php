@@ -4,7 +4,7 @@ namespace OurEdu\RequestTracker\Console\Commands;
 
 use Illuminate\Console\Command;
 use OurEdu\RequestTracker\Models\RequestTracker;
-use OurEdu\RequestTracker\Models\AccessLog;
+use OurEdu\RequestTracker\Models\UserAccessDetail;
 use Carbon\Carbon;
 
 class CleanupLogsCommand extends Command
@@ -27,7 +27,7 @@ class CleanupLogsCommand extends Command
 
         // Count records to be deleted
         $trackersCount = RequestTracker::where('date', '<', $cutoffDate->format('Y-m-d'))->count();
-        $logsCount = AccessLog::where('created_at', '<', $cutoffDate)->count();
+        $logsCount = UserAccessDetail::where('created_at', '<', $cutoffDate)->count();
 
         if ($trackersCount === 0 && $logsCount === 0) {
             $this->info('✅ No records found to clean up.');
@@ -57,7 +57,7 @@ class CleanupLogsCommand extends Command
         $this->info('Deleting old records...');
         
         $deletedTrackers = RequestTracker::where('date', '<', $cutoffDate->format('Y-m-d'))->delete();
-        $deletedLogs = AccessLog::where('created_at', '<', $cutoffDate)->delete();
+        $deletedLogs = UserAccessDetail::where('created_at', '<', $cutoffDate)->delete();
 
         $this->newLine();
         $this->info("✅ Cleanup completed!");

@@ -2,34 +2,25 @@
 
 namespace OurEdu\RequestTracker\Services;
 
-use OurEdu\RequestTracker\Attributes\TrackRequest;
 use ReflectionClass;
 use ReflectionMethod;
 
 class ModuleExtractor
 {
     /**
-     * Extract module, submodule, and annotation from request data
+     * Extract module, submodule, and action from request data
      * 
      * @param string $path
      * @param string|null $routeName
      * @param string|null $controllerAction
      * @param array $config
-     * @return array ['module' => string, 'submodule' => string, 'annotation' => string]
+     * @return array ['module' => string, 'submodule' => string, 'action' => string]
      */
     public static function extract(string $path, ?string $routeName, ?string $controllerAction, array $config = []): array
     {
         $module = null;
         $submodule = null;
-        $annotation = null;
-
-        // 0. Try to extract from PHP 8 Attribute (Highest priority)
-        if ($controllerAction) {
-            $result = self::extractFromAttribute($controllerAction);
-            if ($result['module']) {
-                return $result;
-            }
-        }
+        $action = null;
 
         // 1. Try custom patterns from config
         if (!empty($config['module_mapping']['patterns'])) {
@@ -65,52 +56,20 @@ class ModuleExtractor
         return [
             'module' => 'unknown',
             'submodule' => null,
-            'annotation' => self::humanize($path)
+            'action' => self::humanize($path)
         ];
     }
 
     /**
-     * Extract from PHP 8 Attribute: #[TrackRequest('module.submodule|Annotation')]
-     */
-    protected static function extractFromAttribute(string $controllerAction): array
-    {
-        try {
-            // Parse controller action: "App\Http\Controllers\UserController@show"
-            if (!str_contains($controllerAction, '@')) {
-                return ['module' => null, 'submodule' => null, 'annotation' => null];
-            }
-
-            [$controller, $method] = explode('@', $controllerAction);
-
-            // Check if class and method exist
-            if (!class_exists($controller)) {
-                return ['module' => null, 'submodule' => null, 'annotation' => null];
-            }
-
-            $reflection = new ReflectionMethod($controller, $method);
-            $attributes = $reflection->getAttributes(TrackRequest::class);
-
-            if (!empty($attributes)) {
-                $trackRequest = $attributes[0]->newInstance();
-                return $trackRequest->toArray();
-            }
-        } catch (\Exception $e) {
-            // Silently fail if reflection fails
-        }
-
-        return ['module' => null, 'submodule' => null, 'annotation' => null];
-    }
-
-    /**
-     * Parse mapping string: "module" or "module.submodule" or "module.submodule|Annotation"
+     * Parse mapping string: "module" or "module.submodule" or "module.submodule|Action"
      */
     protected static function parseMapping(string $mapping): array
     {
-        $annotation = null;
+        $action = null;
         
-        // Check for annotation (text after |)
+        // Check for action (text after |)
         if (str_contains($mapping, '|')) {
-            [$mapping, $annotation] = explode('|', $mapping, 2);
+            [$mapping, $action] = explode('|', $mapping, 2);
         }
 
         // Check for submodule (text after .)
@@ -124,7 +83,7 @@ class ModuleExtractor
         return [
             'module' => $module,
             'submodule' => $submodule,
-            'annotation' => $annotation
+            'action' => $action
         ];
     }
 
@@ -137,15 +96,15 @@ class ModuleExtractor
         
         $module = $parts[0] ?? null;
         $submodule = $parts[1] ?? null;
-        $action = $parts[2] ?? null;
+        $actionPart = $parts[2] ?? null;
 
-        // Build annotation from action
-        $annotation = $action ? ucfirst($action) . ' ' . ucfirst($submodule ?? $module) : null;
+        // Build action from action part
+        $action = $actionPart ? ucfirst($actionPart) . ' ' . ucfirst($submodule ?? $module) : null;
 
         return [
             'module' => $module,
             'submodule' => $submodule,
-            'annotation' => $annotation
+            'action' => $action
         ];
     }
 
@@ -189,7 +148,7 @@ class ModuleExtractor
         return [
             'module' => $module,
             'submodule' => $submodule,
-            'annotation' => $submodule ? ucfirst($submodule) . ' in ' . ucfirst($module) : ucfirst($module ?? 'Resource')
+            'action' => $submodule ? ucfirst($submodule) . ' in ' . ucfirst($module) : ucfirst($module ?? 'Resource')
         ];
     }
 
@@ -206,20 +165,20 @@ class ModuleExtractor
             $method = $matches[2] ?? null;
             
             $module = $controller ? strtolower($controller) : null;
-            $annotation = $method && $controller ? ucfirst($method) . ' ' . ucfirst($controller) : null;
+            $action = $method && $controller ? ucfirst($method) . ' ' . ucfirst($controller) : null;
             
             return [
                 'module' => $module,
                 'submodule' => null,
-                'annotation' => $annotation
+                'action' => $action
             ];
         }
 
-        return ['module' => null, 'submodule' => null, 'annotation' => null];
+        return ['module' => null, 'submodule' => null, 'action' => null];
     }
 
     /**
-     * Convert path to human-readable annotation
+     * Convert path to human-readable action
      */
     protected static function humanize(string $path): string
     {

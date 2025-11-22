@@ -21,6 +21,7 @@ return new class extends Migration {
             // User context (denormalized for faster queries)
             $table->uuid('user_uuid')->index();
             $table->uuid('role_uuid')->nullable()->index();
+            $table->string('role_name')->nullable()->index()->comment('Role name for easier filtering');
             $table->date('date')->index();
             
             // Endpoint details - ده اللي المدرس دخل عليه
