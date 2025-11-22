@@ -204,8 +204,63 @@ class EventsSubscriber
             logger()->info('[Request Tracker] New tracker created successfully', ['tracker_uuid' => $tracker->uuid]);
         }
 
-        // Track the specific endpoint visited
-        $this->trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config);
+        // Only track endpoint details if using #[TrackRequest] attribute
+        // Check if route has the attribute
+        $route = $request->route();
+        if ($route && $route->getAction('controller')) {
+            $this->trackEndpointIfAnnotated($tracker, $request, $routeName, $controllerAction, $today, $config);
+        }
+    }
+
+    /**
+     * Track endpoint only if controller method has #[TrackRequest] attribute
+     */
+    protected function trackEndpointIfAnnotated($tracker, $request, $routeName, $controllerAction, $today, $config)
+    {
+        $route = $request->route();
+        if (!$route) {
+            return;
+        }
+
+        // Get controller and method
+        $action = $route->getAction();
+        if (!isset($action['controller'])) {
+            return;
+        }
+
+        // Parse controller@method
+        [$controller, $method] = explode('@', $action['controller']);
+        
+        if (!class_exists($controller) || !method_exists($controller, $method)) {
+            return;
+        }
+
+        // Check for #[TrackRequest] attribute using reflection
+        try {
+            $reflectionMethod = new \ReflectionMethod($controller, $method);
+            $attributes = $reflectionMethod->getAttributes(\OurEdu\RequestTracker\Attributes\TrackRequest::class);
+            
+            if (empty($attributes)) {
+                // No attribute found, don't track endpoint details
+                logger()->info('[Request Tracker] No #[TrackRequest] attribute found, skipping endpoint tracking', [
+                    'controller' => $controller,
+                    'method' => $method,
+                ]);
+                return;
+            }
+            
+            // Attribute found, proceed with tracking
+            logger()->info('[Request Tracker] #[TrackRequest] attribute found, tracking endpoint', [
+                'controller' => $controller,
+                'method' => $method,
+            ]);
+            
+            $this->trackEndpointVisit($tracker, $request, $routeName, $controllerAction, $today, $config);
+            
+        } catch (\ReflectionException $e) {
+            logger()->warning('[Request Tracker] Reflection error', ['error' => $e->getMessage()]);
+            return;
+        }
     }
 
     /**
