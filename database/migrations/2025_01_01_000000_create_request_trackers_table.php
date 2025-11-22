@@ -27,15 +27,7 @@ return new class extends Migration {
             // Session tracking
             $table->uuid('user_session_uuid')->nullable()->index();
             
-            // Device & Network tracking - معلومات الجهاز والشبكة
-            $table->string('ip_address', 45)->nullable()->comment('IP Address (IPv4 or IPv6)');
-            $table->text('user_agent')->nullable()->comment('Browser User Agent');
-            $table->string('device_type', 20)->nullable()->comment('mobile, desktop, tablet, bot');
-            $table->string('browser', 50)->nullable()->comment('Chrome, Firefox, Safari, etc.');
-            $table->string('platform', 50)->nullable()->comment('Windows, iOS, Android, Linux, etc.');
-            
-            $table->timestamps();
-            
+            $table->timestamps();            
             // Composite unique index - يوزر واحد + رول واحد + يوم واحد = سطر واحد
             $table->unique(['user_uuid', 'role_uuid', 'date'], 'unique_user_role_date');
             $table->index(['user_uuid', 'date']);

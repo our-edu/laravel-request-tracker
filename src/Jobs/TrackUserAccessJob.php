@@ -140,6 +140,11 @@ class TrackUserAccessJob implements ShouldQueue
         $trackingData = $this->extractTrackingData();
         
         if (!$trackingData) {
+            logger()->info('[Request Tracker Job] No tracking data extracted', [
+                'controller_action' => $this->controllerAction,
+                'route_name' => $this->routeName,
+                'path' => $this->requestPath,
+            ]);
             return; // No tracking attribute found
         }
         
@@ -175,13 +180,31 @@ class TrackUserAccessJob implements ShouldQueue
      */
     protected function extractTrackingData(): ?array
     {
-        if (!$this->controllerAction || !str_contains($this->controllerAction, '@')) {
+        logger()->info('[Request Tracker Job] Attempting to extract tracking data', [
+            'controller_action' => $this->controllerAction,
+            'route_name' => $this->routeName,
+        ]);
+        
+        if (!$this->controllerAction) {
+            logger()->info('[Request Tracker Job] No controller action found');
             return null;
         }
 
-        [$controller, $method] = explode('@', $this->controllerAction);
+        // Handle different controller action formats
+        $controller = null;
+        $method = null;
         
-        if (!class_exists($controller)) {
+        if (str_contains($this->controllerAction, '@')) {
+            // Format: App\Http\Controllers\SubjectApiController@index
+            [$controller, $method] = explode('@', $this->controllerAction);
+        } else {
+            // Format might be just the controller class name
+            $controller = $this->controllerAction;
+            $method = $this->routeName;
+        }
+        
+        if (!$controller || !class_exists($controller)) {
+            logger()->info('[Request Tracker Job] Controller class not found', ['controller' => $controller]);
             return null;
         }
 
@@ -192,11 +215,20 @@ class TrackUserAccessJob implements ShouldQueue
             $trackModuleAttributes = $reflectionClass->getAttributes(\OurEdu\RequestTracker\Attributes\TrackModule::class);
             if (!empty($trackModuleAttributes)) {
                 $moduleAttr = $trackModuleAttributes[0]->newInstance();
-                return [
+                
+                $trackingData = [
                     'module' => $moduleAttr->module,
                     'submodule' => $moduleAttr->submodule,
-                    'action' => $this->routeName ?? $method,
+                    'action' => $this->routeName ?? $method ?? 'unknown',
                 ];
+                
+                logger()->info('[Request Tracker Job] TrackModule attribute found', $trackingData);
+                
+                return $trackingData;
+            } else {
+                logger()->info('[Request Tracker Job] No TrackModule attribute found on controller', [
+                    'controller' => $controller,
+                ]);
             }
             
         } catch (\ReflectionException $e) {
