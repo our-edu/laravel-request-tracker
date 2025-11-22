@@ -27,9 +27,9 @@ class UserAccessStatsCommand extends Command
         $top = $this->option('top');
         
         // Interactive role selection
-        $roleUuid = $this->option('role');
-        if (!$roleUuid && $this->confirm('Do you want to filter by a specific role?', false)) {
-            $roleUuid = $this->ask('Enter the role UUID');
+        $roleName = $this->option('role');
+        if (!$roleName && $this->confirm('Do you want to filter by a specific role?', false)) {
+            $roleName = $this->ask('Enter the role name');
         }
 
         if ($nationalId) {
@@ -41,7 +41,7 @@ class UserAccessStatsCommand extends Command
             }
             $this->showUserStats($user->uuid, $nationalId, $date, $from, $to, $roleUuid);
         } else {
-            $this->showOverallStats($date, $from, $to, $top, $roleUuid);
+            $this->showOverallStats($date, $from, $to, $top, $roleName);
         }
 
         return Command::SUCCESS;
@@ -109,11 +109,11 @@ class UserAccessStatsCommand extends Command
         );
     }
 
-    protected function showOverallStats($date, $from, $to, $top, $roleUuid = null)
+    protected function showOverallStats($date, $from, $to, $top, $roleName = null)
     {
         $this->info("📊 Overall Access Statistics");
-        if ($roleUuid) {
-            $this->info("🎭 Role Filter: {$roleUuid}");
+        if ($roleName) {
+            $this->info("🎭 Role Filter: {$roleName}");
         } else {
             $this->comment("📋 General report (all roles)");
         }
@@ -121,8 +121,8 @@ class UserAccessStatsCommand extends Command
 
         $query = RequestTracker::query();
         
-        if ($roleUuid) {
-            $query->where('role_uuid', $roleUuid);
+        if ($roleName) {
+            $query->where('role_name', $roleName);
         }
 
         if ($date) {
