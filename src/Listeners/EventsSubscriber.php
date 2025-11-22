@@ -35,8 +35,14 @@ class EventsSubscriber
         $config  = config('request-tracker', []);
 
         if (empty($config['enabled'])) {
+            logger()->info('[Request Tracker] Tracking is disabled in config');
             return;
         }
+        
+        logger()->info('[Request Tracker] Starting to track request', [
+            'path' => $request->path(),
+            'method' => $request->method(),
+        ]);
         $method = $request->method();
         $app    = env('APP_NAME');
 
@@ -72,6 +78,7 @@ class EventsSubscriber
 
             // 3) default: treat as suffix (what you want for v1/ar/parent/look-up)
             if (Str::endsWith($path, $pattern)) {
+                logger()->info('[Request Tracker] Path excluded by pattern', ['path' => $path, 'pattern' => $pattern]);
                 return;
             }
         }
@@ -85,10 +92,12 @@ class EventsSubscriber
         }
 
         if (!$user || is_null($user) || is_null($user->getAuthIdentifier())) {
+            logger()->info('[Request Tracker] No authenticated user found');
             return;
         }
 
         $userId = $user->getAuthIdentifier();
+        logger()->info('[Request Tracker] User authenticated', ['user_uuid' => $userId]);
 
         // Get bearer token and resolve role from user_sessions table
         $roleUuid = null;
@@ -100,11 +109,23 @@ class EventsSubscriber
                 'token'     => $token
             ])->first();
 
-            if (!$userSession || is_null($userSession->role_id)) {
+            if (!$userSession) {
+                logger()->info('[Request Tracker] No user session found for token');
                 return; 
             }
+            
+            if (is_null($userSession->role_id)) {
+                logger()->info('[Request Tracker] User session has no role_id', ['session' => $userSession]);
+                return; 
+            }
+            
             $roleUuid = $userSession->role_id;
             $userSessionUuid = $userSession->uuid ?? null;
+            
+            logger()->info('[Request Tracker] User session found', [
+                'role_uuid' => $roleUuid,
+                'session_uuid' => $userSessionUuid
+            ]);
         }
 
         // Get today's date for unique daily tracking
@@ -138,6 +159,12 @@ class EventsSubscriber
             $tracker = $existingTracker;
         } else {
             // Create new tracker for this user + role + date
+            logger()->info('[Request Tracker] Creating new tracker record', [
+                'user_uuid' => $userId,
+                'role_uuid' => $roleUuid,
+                'date' => $today,
+            ]);
+            
             $tracker = RequestTracker::create([
                 'uuid'              => (string) Str::uuid(),
                 'user_uuid'         => $userId,
@@ -154,6 +181,8 @@ class EventsSubscriber
                 'browser'           => $deviceInfo['browser'],
                 'platform'          => $deviceInfo['platform'],
             ]);
+            
+            logger()->info('[Request Tracker] New tracker created successfully', ['tracker_uuid' => $tracker->uuid]);
         }
 
         // Track the specific endpoint visited
