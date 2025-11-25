@@ -164,10 +164,6 @@ class EventsSubscriber
             $controllerAction = $route->getActionName();
         }
         
-        // Get device and network info
-        $ipAddress = $request->ip();
-        $userAgent = $request->userAgent();
-        
         // Dispatch tracking job to queue (always async)
         logger()->info('[Request Tracker] Dispatching tracking job to queue', [
             'user_uuid' => $userId,
