@@ -61,22 +61,22 @@ return [
         'enabled' => true,
         
         // Custom path patterns to module mapping (highest priority)
-        // Format: 'path_pattern' => 'module_name' or ['module' => 'name', 'submodule' => 'sub']
+        // Will match if path contains the pattern
         'patterns' => [
-            '/admission/' => ['module' => 'admission'],
-            '/subject/' => ['module' => 'subjects'],
-            '/certificate_manager/' => ['module' => 'subjects', 'submodule' => 'certificates'],
-            '/users/' => ['module' => 'users'],
-            '/auth/' => ['module' => 'authentication'],
-            '/grades/' => ['module' => 'academic', 'submodule' => 'grades'],
-            '/attendance/' => ['module' => 'academic', 'submodule' => 'attendance'],
+            '/admission/' => 'admission',
+            '/subject/' => 'subjects',
+            '/certificate_manager/' => 'subjects',
+            '/users/' => 'users',
+            '/auth/' => 'authentication',
+            '/grades/' => 'academic',
+            '/attendance/' => 'academic',
             // Add your patterns here
         ],
         
-        // Auto-extract from path segments (fallback)
-        // e.g., 'api/v1/en/subject/certificates/list' -> extract 'subject'
+        // Auto-extract from path segments (fallback if no pattern matches)
+        // e.g., 'api/v1/en/subject/certificates/list' -> extract 'subject' (segment index 3)
         'auto_extract' => true,
-        'auto_extract_segment' => 3, // 0-based index (skip api/v1/locale)
+        'auto_extract_segment' => 3, // 0-based index (typically after api/v1/locale)
     ],
 ];
 
