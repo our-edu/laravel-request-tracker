@@ -56,21 +56,27 @@ return [
         'keep_detailed_days' => 30,
     ],
 
-    // Module mapping - Extract module name from path
+    // Module mapping - Auto-detect module from path when no #[TrackModule] attribute
     'module_mapping' => [
         'enabled' => true,
         
-        // Map path patterns to module names with optional annotations
-        // Format: 'pattern' => 'module' or 'module.submodule' or 'module.submodule|Annotation'
+        // Custom path patterns to module mapping (highest priority)
+        // Format: 'path_pattern' => 'module_name' or ['module' => 'name', 'submodule' => 'sub']
         'patterns' => [
-            'api/v1/users' => 'users|User Management',
-            // Add more patterns as needed
+            '/admission/' => ['module' => 'admission'],
+            '/subject/' => ['module' => 'subjects'],
+            '/certificate_manager/' => ['module' => 'subjects', 'submodule' => 'certificates'],
+            '/users/' => ['module' => 'users'],
+            '/auth/' => ['module' => 'authentication'],
+            '/grades/' => ['module' => 'academic', 'submodule' => 'grades'],
+            '/attendance/' => ['module' => 'academic', 'submodule' => 'attendance'],
+            // Add your patterns here
         ],
         
-        // Fallback: extract module from path automatically
-        // e.g., 'api/v1/users/123' -> 'users'
+        // Auto-extract from path segments (fallback)
+        // e.g., 'api/v1/en/subject/certificates/list' -> extract 'subject'
         'auto_extract' => true,
-        'auto_extract_segment' => 2, // 0-based index of path segment (after api/v1)
+        'auto_extract_segment' => 3, // 0-based index (skip api/v1/locale)
     ],
 ];
 

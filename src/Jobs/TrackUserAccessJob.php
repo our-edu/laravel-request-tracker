@@ -10,6 +10,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Str;
 use OurEdu\RequestTracker\Models\RequestTracker;
 use OurEdu\RequestTracker\Models\UserAccessDetail;
+use OurEdu\RequestTracker\Services\ModuleExtractor;
 
 class TrackUserAccessJob implements ShouldQueue
 {
@@ -182,17 +183,47 @@ class TrackUserAccessJob implements ShouldQueue
     }
 
     /**
-     * Extract tracking data from controller #[TrackModule] attribute
+     * Extract tracking data from controller #[TrackModule] attribute or auto-detect
      */
     protected function extractTrackingData(): ?array
     {
         logger()->info('[Request Tracker Job] Attempting to extract tracking data', [
             'controller_action' => $this->controllerAction,
             'route_name' => $this->routeName,
+            'path' => $this->requestPath,
         ]);
         
+        // First, try to extract from #[TrackModule] attribute
+        $attributeData = $this->extractFromAttribute();
+        if ($attributeData) {
+            logger()->info('[Request Tracker Job] TrackModule attribute found', $attributeData);
+            return $attributeData;
+        }
+        
+        // Fallback: Auto-detect module from path/route using ModuleExtractor
+        logger()->info('[Request Tracker Job] No attribute found, trying auto-detection');
+        $autoDetected = ModuleExtractor::extract(
+            $this->requestPath,
+            $this->routeName,
+            $this->controllerAction,
+            $this->config
+        );
+        
+        if ($autoDetected && !empty($autoDetected['module'])) {
+            logger()->info('[Request Tracker Job] Module auto-detected', $autoDetected);
+            return $autoDetected;
+        }
+        
+        logger()->info('[Request Tracker Job] No tracking data extracted');
+        return null;
+    }
+    
+    /**
+     * Extract from #[TrackModule] attribute on controller class
+     */
+    protected function extractFromAttribute(): ?array
+    {
         if (!$this->controllerAction) {
-            logger()->info('[Request Tracker Job] No controller action found');
             return null;
         }
 
@@ -210,7 +241,6 @@ class TrackUserAccessJob implements ShouldQueue
         }
         
         if (!$controller || !class_exists($controller)) {
-            logger()->info('[Request Tracker Job] Controller class not found', ['controller' => $controller]);
             return null;
         }
 
@@ -228,19 +258,11 @@ class TrackUserAccessJob implements ShouldQueue
                     $action = substr($action, strrpos($action, '.') + 1);
                 }
                 
-                $trackingData = [
+                return [
                     'module' => $moduleAttr->module,
                     'submodule' => $moduleAttr->submodule,
                     'action' => $action,
                 ];
-                
-                logger()->info('[Request Tracker Job] TrackModule attribute found', $trackingData);
-                
-                return $trackingData;
-            } else {
-                logger()->info('[Request Tracker Job] No TrackModule attribute found on controller', [
-                    'controller' => $controller,
-                ]);
             }
             
         } catch (\ReflectionException $e) {
