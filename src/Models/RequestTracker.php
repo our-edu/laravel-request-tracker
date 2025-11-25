@@ -22,11 +22,6 @@ class RequestTracker extends Model
         'first_access',
         'last_access',
         'user_session_uuid',
-        'ip_address',
-        'user_agent',
-        'device_type',
-        'browser',
-        'platform',
     ];
 
     protected $casts = [

@@ -222,13 +222,6 @@ class RequestTrackerService
             $tracker->increment('access_count');
             $tracker->update(['last_access' => $timestamp]);
         } else {
-            // Parse device info if user agent provided
-            $deviceInfo = $userAgent ? $this->parseUserAgent($userAgent) : [
-                'device_type' => null,
-                'browser' => null,
-                'platform' => null,
-            ];
-            
             // Create new tracker
             $tracker = RequestTracker::create([
                 'uuid' => (string) \Illuminate\Support\Str::uuid(),
@@ -238,12 +231,6 @@ class RequestTrackerService
                 'access_count' => 1,
                 'first_access' => $timestamp,
                 'last_access' => $timestamp,
-                'application' => config('app.name', 'Laravel'),
-                'ip_address' => $ipAddress,
-                'user_agent' => $userAgent,
-                'device_type' => $deviceInfo['device_type'],
-                'browser' => $deviceInfo['browser'],
-                'platform' => $deviceInfo['platform'],
             ]);
         }
         
@@ -336,68 +323,6 @@ class RequestTrackerService
             'first_visit' => $timestamp,
             'last_visit' => $timestamp,
         ]);
-    }
-    
-    /**
-     * Parse user agent to extract device info (same logic as EventsSubscriber)
-     */
-    protected function parseUserAgent(?string $userAgent): array
-    {
-        if (!$userAgent) {
-            return [
-                'device_type' => 'unknown',
-                'browser' => 'unknown',
-                'platform' => 'unknown',
-            ];
-        }
-        
-        $userAgent = strtolower($userAgent);
-        
-        // Detect device type
-        $deviceType = 'desktop';
-        if (str_contains($userAgent, 'mobile')) {
-            $deviceType = 'mobile';
-        } elseif (str_contains($userAgent, 'tablet') || str_contains($userAgent, 'ipad')) {
-            $deviceType = 'tablet';
-        } elseif (str_contains($userAgent, 'bot') || str_contains($userAgent, 'crawler') || str_contains($userAgent, 'spider')) {
-            $deviceType = 'bot';
-        }
-        
-        // Detect browser
-        $browser = 'unknown';
-        if (str_contains($userAgent, 'edg')) {
-            $browser = 'Edge';
-        } elseif (str_contains($userAgent, 'chrome')) {
-            $browser = 'Chrome';
-        } elseif (str_contains($userAgent, 'safari') && !str_contains($userAgent, 'chrome')) {
-            $browser = 'Safari';
-        } elseif (str_contains($userAgent, 'firefox')) {
-            $browser = 'Firefox';
-        } elseif (str_contains($userAgent, 'opera') || str_contains($userAgent, 'opr')) {
-            $browser = 'Opera';
-        } elseif (str_contains($userAgent, 'msie') || str_contains($userAgent, 'trident')) {
-            $browser = 'Internet Explorer';
-        }
-        
-        // Detect platform
-        $platform = 'unknown';
-        if (str_contains($userAgent, 'windows')) {
-            $platform = 'Windows';
-        } elseif (str_contains($userAgent, 'mac') || str_contains($userAgent, 'darwin')) {
-            $platform = 'macOS';
-        } elseif (str_contains($userAgent, 'iphone') || str_contains($userAgent, 'ipad')) {
-            $platform = 'iOS';
-        } elseif (str_contains($userAgent, 'android')) {
-            $platform = 'Android';
-        } elseif (str_contains($userAgent, 'linux')) {
-            $platform = 'Linux';
-        }
-        
-        return [
-            'device_type' => $deviceType,
-            'browser' => $browser,
-            'platform' => $platform,
-        ];
     }
 }
 

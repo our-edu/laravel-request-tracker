@@ -7,11 +7,11 @@ Event-driven Laravel package for tracking user access patterns with **daily summ
 ✅ **Daily Activity Summary** - One record per user+role+date with access count & timestamps  
 ✅ **Detailed User Journey** - Track unique endpoints with module/submodule organization  
 ✅ **PHP 8 Attributes** - Use `#[TrackModule('module', 'submodule')]` on controllers  
+✅ **Auto Module Detection** - Fallback to pattern matching when no attribute provided  
 ✅ **Queue-Based** - All tracking via background jobs (respects `QUEUE_CONNECTION`)  
 ✅ **National ID Support** - Commands filter by national_id for easier access  
-✅ **Role Name Storage** - Store role names alongside UUIDs for filtering  
+✅ **Role Name Storage** - Store role names from `roles.name` for filtering  
 ✅ **Silent Errors** - Tracking failures won't break your application  
-✅ **Auto-Detection** - Extract modules from URLs, route names, or controller names  
 ✅ **Data Retention** - Automatic cleanup of old records  
 
 ---
@@ -66,13 +66,14 @@ php artisan tracker:module-access orders --from=2025-01-01
 2. `EventsSubscriber` extracts user, role, device info and dispatches job to queue
 3. `TrackUserAccessJob` processes in background:
    - Creates/updates daily summary in `request_trackers` table
-   - Checks for `#[TrackModule]` attribute on controller
-   - If found, creates detailed record in `user_access_details` table
+   - Checks for `#[TrackModule]` attribute on controller (priority 1)
+   - If no attribute, falls back to auto-detection via ModuleExtractor
+   - Creates detailed record in `user_access_details` table if module detected
 4. Your application responds immediately (no blocking)
 
 **What's Tracked:**
 - **Daily Summary** (all requests): User+role+date, access count, timestamps, device info
-- **Detailed Journey** (attributed controllers only): Endpoint, module, submodule, action, visit count
+- **Detailed Journey** (when module detected): Endpoint, module, submodule, action, visit count
 
 ---
 
@@ -113,12 +114,20 @@ return [
     // Module auto-extraction from URLs
     'module_mapping' => [
         'enabled' => true,
+        
+        // Pattern matching (checked first)
         'patterns' => [
-            'api/v1/users' => 'users|User Management',
-            'api/v1/users/profile' => 'users.profile|User Profile',
+            '/admission/' => 'admission',
+            '/subject/' => 'subjects',
+            '/certificate_manager/' => 'subjects',
+            '/users/' => 'users',
+            '/auth/' => 'authentication',
         ],
+        
+        // Auto-extract from path segments (fallback)
+        // e.g., 'api/v1/en/subject/list' -> 'subject' (segment 3)
         'auto_extract' => true,
-        'auto_extract_segment' => 2,
+        'auto_extract_segment' => 3, // 0-based index after api/v1/locale
     ],
 ];
 ```
@@ -216,17 +225,12 @@ php artisan tracker:cleanup --days=30 --dry-run
 | `uuid` | UUID | Primary key |
 | `user_uuid` | UUID | User identifier |
 | `role_uuid` | UUID | Role identifier |
-| `role_name` | STRING | Role display name (from `role_translations.display_name` where `locale='en'`) |
+| `role_name` | STRING | Role name (from `roles.name`) |
 | `date` | DATE | Activity date |
 | `access_count` | INTEGER | Total requests this day |
 | `first_access` | DATETIME | First request timestamp |
 | `last_access` | DATETIME | Last request timestamp |
 | `user_session_uuid` | UUID | Session identifier |
-| `ip_address` | STRING | IP address |
-| `user_agent` | TEXT | Browser user agent |
-| `device_type` | STRING | mobile/desktop/tablet |
-| `browser` | STRING | Browser name |
-| `platform` | STRING | Operating system |
 
 ### `user_access_details` - Detailed Journey
 
@@ -238,14 +242,14 @@ php artisan tracker:cleanup --days=30 --dry-run
 | `tracker_uuid` | UUID | FK to `request_trackers.uuid` |
 | `user_uuid` | UUID | User identifier |
 | `role_uuid` | UUID | Role identifier |
-| `role_name` | STRING | Role display name |
+| `role_name` | STRING | Role name (from `roles.name`) |
 | `date` | DATE | Visit date |
 | `method` | STRING | HTTP method (GET/POST/PUT/DELETE) |
 | `endpoint` | TEXT | Full path (e.g., `api/v1/users/123/profile`) |
 | `route_name` | STRING | Laravel route name |
 | `controller_action` | STRING | Controller@method |
-| `module` | STRING | Main module (from `#[TrackModule]`) |
-| `submodule` | STRING | Submodule (from `#[TrackModule]`) |
+| `module` | STRING | Main module (from `#[TrackModule]` or auto-detected) |
+| `submodule` | STRING | Submodule (from `#[TrackModule]` or auto-detected) |
 | `action` | STRING | Action name (from route or method) |
 | `visit_count` | INTEGER | Times visited today |
 | `first_visit` | DATETIME | First visit timestamp |

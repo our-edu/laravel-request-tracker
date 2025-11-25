@@ -167,7 +167,6 @@ class EventsSubscriber
         // Get device and network info
         $ipAddress = $request->ip();
         $userAgent = $request->userAgent();
-        $deviceInfo = $this->parseUserAgent($userAgent);
         
         // Dispatch tracking job to queue (always async)
         logger()->info('[Request Tracker] Dispatching tracking job to queue', [
@@ -183,76 +182,13 @@ class EventsSubscriber
             $today,
             $routeName,
             $controllerAction,
-            $ipAddress,
-            $userAgent,
-            $deviceInfo,
             $request->method(),
             $request->path(),
             $config
         );
     }
 
-    /**
-     * Parse user agent to extract device info
-     */
-    protected function parseUserAgent(?string $userAgent): array
-    {
-        if (!$userAgent) {
-            return [
-                'device_type' => 'unknown',
-                'browser' => 'unknown',
-                'platform' => 'unknown',
-            ];
-        }
-        
-        $userAgent = strtolower($userAgent);
-        
-        // Detect device type
-        $deviceType = 'desktop';
-        if (str_contains($userAgent, 'mobile')) {
-            $deviceType = 'mobile';
-        } elseif (str_contains($userAgent, 'tablet') || str_contains($userAgent, 'ipad')) {
-            $deviceType = 'tablet';
-        } elseif (str_contains($userAgent, 'bot') || str_contains($userAgent, 'crawler') || str_contains($userAgent, 'spider')) {
-            $deviceType = 'bot';
-        }
-        
-        // Detect browser
-        $browser = 'unknown';
-        if (str_contains($userAgent, 'edg')) {
-            $browser = 'Edge';
-        } elseif (str_contains($userAgent, 'chrome')) {
-            $browser = 'Chrome';
-        } elseif (str_contains($userAgent, 'safari') && !str_contains($userAgent, 'chrome')) {
-            $browser = 'Safari';
-        } elseif (str_contains($userAgent, 'firefox')) {
-            $browser = 'Firefox';
-        } elseif (str_contains($userAgent, 'opera') || str_contains($userAgent, 'opr')) {
-            $browser = 'Opera';
-        } elseif (str_contains($userAgent, 'msie') || str_contains($userAgent, 'trident')) {
-            $browser = 'Internet Explorer';
-        }
-        
-        // Detect platform
-        $platform = 'unknown';
-        if (str_contains($userAgent, 'windows')) {
-            $platform = 'Windows';
-        } elseif (str_contains($userAgent, 'mac') || str_contains($userAgent, 'darwin')) {
-            $platform = 'macOS';
-        } elseif (str_contains($userAgent, 'iphone') || str_contains($userAgent, 'ipad')) {
-            $platform = 'iOS';
-        } elseif (str_contains($userAgent, 'android')) {
-            $platform = 'Android';
-        } elseif (str_contains($userAgent, 'linux')) {
-            $platform = 'Linux';
-        }
-        
-        return [
-            'device_type' => $deviceType,
-            'browser' => $browser,
-            'platform' => $platform,
-        ];
-    }
+
 
     /**
      * Log errors silently without breaking the application
