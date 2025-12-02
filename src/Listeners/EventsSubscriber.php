@@ -183,10 +183,7 @@ class EventsSubscriber
             $config
         );
         
-        // Configure queue connection and name from config
-        if (!empty($config['queue']['connection'])) {
-            $job->onConnection($config['queue']['connection']);
-        }
+        // Configure queue name from config
         if (!empty($config['queue']['queue'])) {
             $job->onQueue($config['queue']['queue']);
         }

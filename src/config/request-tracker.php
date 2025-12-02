@@ -25,9 +25,6 @@ return [
 
     // Queue configuration
     'queue' => [
-        // Queue connection to use (null = default queue connection)
-        'connection' => env('REQUEST_TRACKER_QUEUE_CONNECTION', null),
-        
         // Queue name to dispatch jobs to (null = default queue)
         'queue' => env('REQUEST_TRACKER_QUEUE_NAME', null),
     ],
