@@ -63,7 +63,7 @@ php artisan tracker:module-access orders --from=2025-01-01
 **Architecture:** `Request` → `RequestHandled Event` → `EventsSubscriber` → `TrackUserAccessJob` (queue) → `Database`
 
 1. After a request completes (post-auth middleware), `RequestHandled` event fires
-2. `EventsSubscriber` extracts user, role, device info and dispatches job to queue
+2. `EventsSubscriber` extracts user, role info and dispatches job to queue
 3. `TrackUserAccessJob` processes in background:
    - Creates/updates daily summary in `request_trackers` table
    - Checks for `#[TrackModule]` attribute on controller (priority 1)
@@ -72,7 +72,7 @@ php artisan tracker:module-access orders --from=2025-01-01
 4. Your application responds immediately (no blocking)
 
 **What's Tracked:**
-- **Daily Summary** (all requests): User+role+date, access count, timestamps, device info
+- **Daily Summary** (all requests): User+role+date, access count, timestamps
 - **Detailed Journey** (when module detected): Endpoint, module, submodule, action, visit count
 
 ---

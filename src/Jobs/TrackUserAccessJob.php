@@ -26,9 +26,6 @@ class TrackUserAccessJob implements ShouldQueue
     protected $today;
     protected $routeName;
     protected $controllerAction;
-    protected $ipAddress;
-    protected $userAgent;
-    protected $deviceInfo;
     protected $requestMethod;
     protected $requestPath;
     protected $config;
@@ -41,9 +38,6 @@ class TrackUserAccessJob implements ShouldQueue
         $today,
         $routeName,
         $controllerAction,
-        $ipAddress,
-        $userAgent,
-        $deviceInfo,
         $requestMethod,
         $requestPath,
         $config
@@ -55,9 +49,6 @@ class TrackUserAccessJob implements ShouldQueue
         $this->today = $today;
         $this->routeName = $routeName;
         $this->controllerAction = $controllerAction;
-        $this->ipAddress = $ipAddress;
-        $this->userAgent = $userAgent;
-        $this->deviceInfo = $deviceInfo;
         $this->requestMethod = $requestMethod;
         $this->requestPath = $requestPath;
         $this->config = $config;
@@ -109,11 +100,6 @@ class TrackUserAccessJob implements ShouldQueue
                     'access_count'      => 1,
                     'first_access'      => now(),
                     'last_access'       => now(),
-                    'ip_address'        => $this->ipAddress,
-                    'user_agent'        => $this->userAgent,
-                    'device_type'       => $this->deviceInfo['device_type'],
-                    'browser'           => $this->deviceInfo['browser'],
-                    'platform'          => $this->deviceInfo['platform'],
                 ]);
                 
                 logger()->info('[Request Tracker Job] New tracker created successfully', [
