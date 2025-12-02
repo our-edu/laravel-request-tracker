@@ -170,7 +170,7 @@ class EventsSubscriber
             'role_name' => $roleName ?? 'N/A',
         ]);
         
-        TrackUserAccessJob::dispatch(
+        $job = new TrackUserAccessJob(
             $userId,
             $roleUuid,
             $roleName,
@@ -182,6 +182,16 @@ class EventsSubscriber
             $request->path(),
             $config
         );
+        
+        // Configure queue connection and name from config
+        if (!empty($config['queue']['connection'])) {
+            $job->onConnection($config['queue']['connection']);
+        }
+        if (!empty($config['queue']['queue'])) {
+            $job->onQueue($config['queue']['queue']);
+        }
+        
+        dispatch($job);
     }
 
 

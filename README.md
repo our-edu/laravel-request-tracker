@@ -84,7 +84,8 @@ php artisan tracker:module-access orders --from=2025-01-01
 REQUEST_TRACKER_ENABLED=true              # Enable/disable tracking
 REQUEST_TRACKER_SILENT_ERRORS=true        # Don't break app on errors
 REQUEST_TRACKER_AUTO_CLEANUP=false        # Auto-delete old records
-QUEUE_CONNECTION=redis                    # Laravel's queue (sync/redis/database)
+REQUEST_TRACKER_QUEUE_CONNECTION=redis    # Queue connection (null = default)
+REQUEST_TRACKER_QUEUE_NAME=tracking       # Queue name (null = default)
 ```
 
 **Config File** (`config/request-tracker.php`):
@@ -103,6 +104,12 @@ return [
     
     // Auth guards to check
     'auth_guards' => ['web', 'api'],
+    
+    // Queue configuration
+    'queue' => [
+        'connection' => env('REQUEST_TRACKER_QUEUE_CONNECTION', null), // null = default
+        'queue' => env('REQUEST_TRACKER_QUEUE_NAME', null),            // null = default
+    ],
     
     // Data retention
     'retention' => [

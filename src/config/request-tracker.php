@@ -23,6 +23,15 @@ return [
     // Which guards to use when resolving authenticated user
     'auth_guards' => ['web', 'api'],
 
+    // Queue configuration
+    'queue' => [
+        // Queue connection to use (null = default queue connection)
+        'connection' => env('REQUEST_TRACKER_QUEUE_CONNECTION', null),
+        
+        // Queue name to dispatch jobs to (null = default queue)
+        'queue' => env('REQUEST_TRACKER_QUEUE_NAME', null),
+    ],
+
     // Detailed logging configuration
     'detailed_logging' => [
         // Enable per-request detailed logs (access_logs table)
