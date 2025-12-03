@@ -44,6 +44,7 @@ class RequestTrackerServiceProvider extends ServiceProvider
                 \OurEdu\RequestTracker\Console\Commands\UserJourneyCommand::class,
                 \OurEdu\RequestTracker\Console\Commands\CleanupLogsCommand::class,
                 \OurEdu\RequestTracker\Console\Commands\ModuleAccessCommand::class,
+                \OurEdu\RequestTracker\Console\Commands\TestTrackingCommand::class,
             ]);
         }
     }
