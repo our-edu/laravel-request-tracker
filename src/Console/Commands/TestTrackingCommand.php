@@ -81,10 +81,10 @@ class TestTrackingCommand extends Command
         if ($this->confirm('Do you want to dispatch a test job?', true)) {
             try {
                 $job = new TrackUserAccessJob(
-                    'test-user-uuid',
-                    'test-role-uuid',
+                    \Illuminate\Support\Str::uuid()->toString(),
+                    \Illuminate\Support\Str::uuid()->toString(),
                     'test-role',
-                    'test-session-uuid',
+                    \Illuminate\Support\Str::uuid()->toString(),
                     now()->format('Y-m-d'),
                     'test.route',
                     'TestController@test',

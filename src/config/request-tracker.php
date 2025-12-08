@@ -7,6 +7,7 @@ return [
     // Silent error handling - prevent package errors from breaking your application
     'silent_errors' => env('REQUEST_TRACKER_SILENT_ERRORS', true),
 
+    'saas_mode' => env('REQUEST_TRACKER_SAAS_MODE', false),
     // Paths to exclude from tracking
     'exclude' => [
         // Exact path matches (suffix matching)

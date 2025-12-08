@@ -6,6 +6,7 @@ use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use OurEdu\RequestTracker\Jobs\TrackUserAccessJob;
+use Illuminate\Support\Facades\Cache;
 
 class EventsSubscriber
 {
@@ -22,7 +23,7 @@ class EventsSubscriber
             $this->logError('handleRequestHandled', $e);
         }
     }
-    
+
     /**
      * Internal request handler with tracking logic
      */
@@ -35,7 +36,7 @@ class EventsSubscriber
             logger()->info('[Request Tracker] Tracking is disabled in config');
             return;
         }
-        
+
         logger()->info('[Request Tracker] Starting to track request', [
             'path' => $request->path(),
             'method' => $request->method(),
@@ -85,7 +86,7 @@ class EventsSubscriber
             // Try configured guards
             $guards = $config['auth_guards'] ?? ['web', 'api'];
             logger()->info('[Request Tracker] Checking authentication guards', ['guards' => $guards]);
-            
+
             foreach ($guards as $guard) {
                 $user = auth($guard)->user();
                 if ($user) {
@@ -93,7 +94,7 @@ class EventsSubscriber
                     break;
                 }
             }
-            
+
             // Fallback to request->user()
             if (!$user) {
                 $user = $request->user();
@@ -116,46 +117,65 @@ class EventsSubscriber
 
         // Get bearer token and resolve role from user_sessions table
         $roleUuid = null;
+        $roleName = null; // Initialize here to avoid undefined variable
         $userSessionUuid = null;
         $token = $request->bearerToken();
+        
         if ($token) {
-            $userSession = DB::table('user_sessions')->where([
-                'user_uuid' => $userId,
-                'token'     => $token
-            ])->first();
+            if ($config['saas_mode']) {
+                $userSession = DB::table('user_sessions')->where([
+                    'user_uuid' => $userId,
+                    'token'     => $token
+                ])->first();
 
-            if (!$userSession) {
-                logger()->info('[Request Tracker] No user session found for token');
-                return; 
+                if (!$userSession) {
+                    logger()->info('[Request Tracker] No user session found for token');
+                    return;
+                }
+
+                if (is_null($userSession->role_id)) {
+                    logger()->info('[Request Tracker] User session has no role_id', ['session' => $userSession]);
+                    return;
+                }
+
+                $roleUuid = $userSession->role_id;
+                $userSessionUuid = null;
+
+                // Get role name from roles table
+                if ($roleUuid) {
+                    $role = DB::table('roles')
+                        ->where('id', $roleUuid)
+                        ->first();
+                    $roleName = $role ? $role->name : null;
+                }
+            } else {
+                // Define the cache key for the token
+                $cacheKey = 'token_claims:' . $token;
+
+                // Try to get the cached claims
+                $cachedClaims = Cache::get($cacheKey);
+                if (!$cachedClaims) {
+                    logger()->info('[Request Tracker] No user session data found for token');
+                    return;
+                }
+                $roleUuid = $cachedClaims['role_uuid'] ?? null;
+                $roleName = $cachedClaims['role_name'] ?? null;
+                $userSessionUuid = null;
             }
-            
-            if (is_null($userSession->role_id)) {
-                logger()->info('[Request Tracker] User session has no role_id', ['session' => $userSession]);
-                return; 
-            }
-            
-            $roleUuid = $userSession->role_id;
-            $userSessionUuid = $userSession->uuid ?? null;
-            
-            // Get role name from roles table
-            $roleName = null;
-            if ($roleUuid) {
-                $role = DB::table('roles')
-                    ->where('id', $roleUuid)
-                    ->first();
-                $roleName = $role ? $role->name : null;
-            }
-            
+
             logger()->info('[Request Tracker] User session found', [
                 'role_uuid' => $roleUuid,
                 'role_name' => $roleName,
                 'session_uuid' => $userSessionUuid
             ]);
+        } else {
+            logger()->info('[Request Tracker] No bearer token found, tracking without role');
+            return;
         }
 
         // Get today's date for unique daily tracking
         $today = now()->format('Y-m-d');
-        
+
         // Get route details
         $route = $request->route();
         $routeName = $route ? $route->getName() : null;
@@ -163,13 +183,13 @@ class EventsSubscriber
         if ($route && $route->getActionName() !== 'Closure') {
             $controllerAction = $route->getActionName();
         }
-        
+
         // Dispatch tracking job to queue (always async)
         logger()->info('[Request Tracker] Dispatching tracking job to queue', [
             'user_uuid' => $userId,
             'role_name' => $roleName ?? 'N/A',
         ]);
-        
+
         $job = new TrackUserAccessJob(
             $userId,
             $roleUuid,
@@ -182,12 +202,12 @@ class EventsSubscriber
             $request->path(),
             $config
         );
-        
+
         // Configure queue name from config
         if (!empty($config['queue']['queue'])) {
             $job->onQueue($config['queue']['queue']);
         }
-        
+
         dispatch($job);
     }
 
@@ -200,7 +220,7 @@ class EventsSubscriber
     {
         $config = config('request-tracker', []);
         $silentErrors = $config['silent_errors'] ?? true;
-        
+
         if ($silentErrors) {
             // Log to Laravel log file
             if (function_exists('logger')) {

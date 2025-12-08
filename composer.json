@@ -1,7 +1,7 @@
 {
     "name": "our-education/laravel-request-tracker",
     "description": "Event-driven Laravel package for tracking user access patterns with daily summaries, detailed journeys, and module-level analytics",
-    "version": "2.3.0",
+    "version": "2.3.1",
     "type": "library",
     "license": "MIT",
     "keywords": ["laravel", "request", "tracker", "http", "logging", "middleware"],
