@@ -122,7 +122,7 @@ class EventsSubscriber
         $token = $request->bearerToken();
         
         if ($token) {
-            if ($config['saas_mode']) {
+            if (!$config['saas_mode']) {
                 $userSession = DB::table('user_sessions')->where([
                     'user_uuid' => $userId,
                     'token'     => $token
